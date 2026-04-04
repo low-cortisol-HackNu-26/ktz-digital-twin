@@ -27,14 +27,6 @@ export type TrendPoint = {
   voltage: number;
 };
 
-export type AlertLogEntry = {
-  id: string;
-  code: string;
-  message: string;
-  time: string;
-  severity: HealthCategory;
-};
-
 /** Backend `DriverInfo` (GET /api/auth/me). */
 export type DriverInfo = {
   id: string;

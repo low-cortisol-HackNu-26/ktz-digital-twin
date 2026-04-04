@@ -11,7 +11,7 @@ import {
   useLocomotiveTelemetryHealth,
   resolveHealthLocomotiveId,
 } from "@/hooks/useLocomotiveTelemetryHealth";
-import { formatSpeed, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 function HealthCheckView() {
   const locomotiveId = resolveHealthLocomotiveId();
@@ -19,11 +19,6 @@ function HealthCheckView() {
     useLocomotiveTelemetryHealth(locomotiveId);
 
   const event = current?.event;
-
-  const gaugeData = useMemo(
-    () => [{ name: "score", value: health.score, fill: gaugeColor(health.score) }],
-    [health.score],
-  );
 
   const speedDisplay = event != null ? (event.speed_kph).toPrecision(3) : "—";
   const allowedDisplay =
@@ -39,9 +34,6 @@ function HealthCheckView() {
     event.allowed_speed_kph > 0 &&
     event.speed_kph > event.allowed_speed_kph;
 
-  const showCriticalRing =
-    overspeed;
-
   const wirePayload = useMemo(() => {
     if (current) return current;
     return {
@@ -54,66 +46,92 @@ function HealthCheckView() {
     };
   }, [current, locomotiveId, fetchFailed, loading]);
 
+  const gaugeData = useMemo(
+    () => [
+      {
+        name: "score",
+        value: health.score,
+        fill: gaugeColor(health.score),
+      },
+    ],
+    [health.score],
+  );
+
+  const speedGauge = useMemo(
+    () => [
+      {
+        name: "score",
+        value: 100,
+        fill: overspeed
+          ? "oklch(63.7% 0.237 25.331)"
+          : "oklch(69.6% 0.17 162.48)",
+      },
+    ],
+    [overspeed],
+  );
+  
+  const gaugeTrackColor =
+    health.category === "Критично"
+      ? "rgba(255,255,255,0.9)"
+      : health.category === "Внимание"
+        ? "rgba(255,255,255,0.9)"
+        : "rgba(255,255,255,0.92)";
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-        <span>
-          Локомотив{" "}
-          <code className="text-slate-400">{locomotiveId}</code> ·{" "}
-          <code className="text-slate-400">/api/locomotives/…/current</code>
-        </span>
-        {loading && <span className="text-slate-400">Обновление…</span>}
-      </div>
-
-      <div className="grid gap-20 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 ">
         <section
           className={cn(
-            "panel relative overflow-hidden lg:col-span-1 h-fit justify-self-end",
+            "w-full relative overflow-hidden col-span-1 bg-slate-100/40 rounded-lg h-80",
             health.category === "Критично" &&
               "animate-critical-pulse border-health-critical/60",
             health.category === "Внимание" && "border-health-warning/50",
             health.category === "Норма" && "border-health-normal/30",
           )}
         >
-          <div className="mt-0 flex items-center gap-6">
-            <div className="h-80 w-80 shrink-0 relative mx-auto">
+          <div className="mt-[0] flex items-center w-full">
+            <div className="relative mx-auto aspect-square w-[399px] mt-[-10px]">
               <ResponsiveContainer width="100%" height="100%">
-                <RadialBarChart
-                  innerRadius="80%"
-                  outerRadius="100%"
-                  data={gaugeData}
-                  startAngle={90}
-                  endAngle={-270}
-                >
-                  <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-                  <RadialBar
-                    background={{ fill: "rgba(148,163,184,0.12)" }}
-                    dataKey="value"
-                    cornerRadius={20}
-                  />
-                </RadialBarChart>
-              </ResponsiveContainer>
+              <RadialBarChart
+                    data={gaugeData}
+                    innerRadius="72%"
+                    outerRadius="95%"
+                    startAngle={220}
+                    endAngle={-40}
+                  >
+                    <PolarAngleAxis
+                      type="number"
+                      domain={[0, 100]}
+                      tick={false}
+                      axisLine={false}
+                    />
+                    <RadialBar
+                      dataKey="value"
+                      cornerRadius={0}
+                      background={{ fill: gaugeTrackColor }}
+                      stroke="white"
+                      strokeWidth={4}
+                    />
+                  </RadialBarChart>
+                </ResponsiveContainer>
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-0">
                 <p
                   className={cn(
-                    "mt-2 inline-flex rounded-md px-2 py-1 text-7xl font-semibold uppercase",
-                    health.category === "Норма" && "text-emerald-500",
-                    health.category === "Внимание" && "text-amber-500",
-                    health.category === "Критично" && "text-red-500",
+                    "mt-2 inline-flex rounded-md px-2 py-1 text-7xl font-semibold uppercase text-white"
                   )}
                 >
                   {health.score}
                 </p>
-                <p className="text-xs text-secondary">Индекс здоровья</p>
+                <p className="text-xs text-white">Индекс здоровья</p>
                 <p
                   className={cn(
-                    "mt-2 inline-flex rounded-full px-3 py-1 text-lg font-semibold tracking-wide",
+                    "mt-2 inline-flex rounded-full px-3 py-1 text-lg font-semibold tracking-wide bg-white",
                     health.category === "Норма" &&
-                      "bg-emerald-500/15 text-emerald-500",
+                      "text-emerald-500 ring-1 ring-emerald-500",
                     health.category === "Внимание" &&
-                      "bg-amber-500/15 text-amber-500",
+                      "text-amber-500 ring-1 ring-amber-500",
                     health.category === "Критично" &&
-                      "bg-rose-500/15 text-red-500 ring-1 ring-red-500",
+                      "text-red-500 ring-1 ring-red-500",
                   )}
                 >
                   {health.category}
@@ -122,22 +140,44 @@ function HealthCheckView() {
             </div>
           </div>
         </section>
-        <section className="panel relative overflow-hidden lg:col-span-1 justify-self-start flex items-center justify-center">
-          <img src="/images/speed.svg" alt="Speed" className="w-80 h-64 " />
+        <section className="w-full relative  lg:col-span-1 bg-slate-100/40 rounded-lg flex items-center justify-center  h-max-[200px]">
+          <img src="/images/speed.svg" alt="Speed" className="w-80 h-64 z-2" />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-0">
-            <p className="text-6xl font-semibold text-primary mt-10">
+            <p className="text-5xl font-semibold text-white mt-10">
               {speedDisplay}
             </p>
-            <p className="text-xs text-primary">км/ч</p>
+            <p className="text-xs text-white">км/ч</p>
           </div>
+          <div className="absolute bg-white border-[6px] border-red-500 rounded-full w-16 h-16 bottom-0 mb-4" />
           <div className="absolute bottom-0 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-0">
-            <p className="text-2xl font-semibold text-primary mt-20">
+            <p className="text-2xl font-semibold text-primary mt-8">
               {allowedDisplay}
             </p>
           </div>
-          {showCriticalRing && (
-            <div className="absolute border-[6px] border-red-500 rounded-full w-16 h-16 bottom-0 mb-10" />
-          )}
+          <div className="absolute mx-auto aspect-square w-[376px] mt-[44px]">
+              <ResponsiveContainer width="100%" height="100%">
+              <RadialBarChart
+                    data={speedGauge}
+                    innerRadius="72%"
+                    outerRadius="80%"
+                    startAngle={225}
+                    endAngle={-45}
+                  >
+                    <PolarAngleAxis
+                      type="number"
+                      domain={[0, 100]}
+                      tick={false}
+                      axisLine={false}
+                    />
+                    <RadialBar
+                      dataKey="value"
+                      cornerRadius={0}
+                      background={{ fill: gaugeTrackColor }}
+                    />
+                  </RadialBarChart>
+                </ResponsiveContainer>
+              </div>
+          
         </section>
       </div>
 

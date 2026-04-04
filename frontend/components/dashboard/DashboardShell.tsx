@@ -32,7 +32,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-[1600px] flex-1 px-6 py-6">{children}</main>
+      <main className="mx-auto w-full max-w-[1600px] flex-1 px-6 py-6 bg-[#00A8D5]">{children}</main>
     </div>
   );
 }
