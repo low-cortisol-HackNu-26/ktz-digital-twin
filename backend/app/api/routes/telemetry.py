@@ -22,6 +22,8 @@ from ...schemas.telemetry import (
 	IngestionStatsResponse,
 	InvalidEvent,
 	LocomotiveCurrentResponse,
+	ReplayFrame,
+	ReplayResponse,
 	SystemMetricsResponse,
 	TelemetryEvent,
 	TelemetryIngestResponse,
@@ -104,7 +106,24 @@ def _derive_progress_from_route_segment(route_segment: str | None) -> tuple[str 
 	except (ValueError, AttributeError):
 		return None, None
 
-	route = next((r for r in cached_routes if r.code == route_code), None)
+	route_code_norm = route_code.strip().upper()
+	route = next(
+		(
+			r
+			for r in cached_routes
+			if str(getattr(r, "code", "")).strip().upper() == route_code_norm
+		),
+		None,
+	)
+	if route is None:
+		route = next(
+			(
+				r
+				for r in cached_routes
+				if str(getattr(r, "code", "")).strip().upper().startswith(route_code_norm)
+			),
+			None,
+		)
 	if route is None:
 		return None, None
 
@@ -112,6 +131,32 @@ def _derive_progress_from_route_segment(route_segment: str | None) -> tuple[str 
 	clamped_idx = max(0, min(seg_idx, segments_total))
 	progress_pct = (clamped_idx / segments_total) * 100.0
 	return route.id, progress_pct
+
+
+def _recompute_derived_metrics_live(payload: dict[str, Any]) -> dict[str, Any]:
+	route_id = None
+	progress_pct = None
+
+	lat = payload.get("gps_lat")
+	lng = payload.get("gps_lon")
+	if lat is not None and lng is not None:
+		try:
+			snap = match_position(float(lat), float(lng), cached_routes)
+			if snap is not None:
+				route_id = snap.route_id
+				progress_pct = snap.progress_pct
+		except (TypeError, ValueError):
+			pass
+
+	derived = _compute_derived_route_metrics(
+		speed_kph=float(payload.get("speed_kph") or 0.0),
+		route_id=route_id,
+		progress_pct=progress_pct,
+		route_segment=payload.get("route_segment"),
+	)
+	updated = dict(payload)
+	updated.update(derived)
+	return updated
 
 
 def _warning_definition(
@@ -429,6 +474,53 @@ async def _get_warning_history(db: AsyncSession, locomotive_id: str) -> list[Act
 	return [_to_warning_response(row) for row in rows]
 
 
+def _warning_active_at(row: LocomotiveWarning, ts: datetime) -> bool:
+	if row.first_seen_at > ts:
+		return False
+	if row.cleared_at is None:
+		return row.status == "active" or row.active
+	return row.cleared_at > ts
+
+
+async def _get_warning_history_rows_in_range(
+	db: AsyncSession,
+	*,
+	locomotive_id: str,
+	from_ts: datetime,
+	to_ts: datetime,
+) -> list[LocomotiveWarning]:
+	await _expire_outdated_warnings(db, locomotive_id=locomotive_id)
+	rows = (
+		await db.execute(
+			select(LocomotiveWarning)
+			.where(
+				LocomotiveWarning.locomotive_id == locomotive_id,
+				LocomotiveWarning.first_seen_at <= to_ts,
+				(LocomotiveWarning.cleared_at.is_(None)) | (LocomotiveWarning.cleared_at > from_ts),
+			)
+			.order_by(LocomotiveWarning.first_seen_at.asc())
+		)
+	).scalars().all()
+	return rows
+
+
+def _snapshot_from_event_row(row: TelemetryEventRecord) -> dict[str, Any]:
+	snapshot = TelemetryEvent.model_validate(
+		{
+			**row.__dict__,
+			"active_fault_codes": row.active_fault_codes or [],
+		}
+	).model_dump(mode="json")
+	derived = _compute_derived_route_metrics(
+		speed_kph=float(row.speed_kph),
+		route_id=None,
+		progress_pct=None,
+		route_segment=row.route_segment,
+	)
+	snapshot.update(derived)
+	return snapshot
+
+
 async def _ensure_locomotive(db: AsyncSession, locomotive_id: str) -> None:
 	row = (await db.execute(select(Locomotive).where(Locomotive.id == locomotive_id))).scalar_one_or_none()
 	if row is None:
@@ -605,7 +697,13 @@ async def get_current(
 	row = (
 		await db.execute(select(CurrentSnapshot).where(CurrentSnapshot.locomotive_id == locomotive_id))
 	).scalar_one_or_none()
-	event = TelemetryEvent.model_validate(row.payload) if row is not None else None
+	event = None
+	if row is not None:
+		merged_payload = _recompute_derived_metrics_live(dict(row.payload))
+		if merged_payload != row.payload:
+			row.payload = merged_payload
+			row.updated_at = _utcnow()
+		event = TelemetryEvent.model_validate(merged_payload)
 	active_warnings = await _get_active_warnings(db, locomotive_id)
 	return LocomotiveCurrentResponse(
 		locomotive_id=locomotive_id,
@@ -652,6 +750,82 @@ async def get_locomotive_warnings(
 	db: AsyncSession = Depends(get_db),
 ) -> list[ActiveWarningResponse]:
 	return await _get_warning_history(db, locomotive_id)
+
+
+@router.get("/locomotives/{locomotive_id}/replay", response_model=ReplayResponse)
+async def get_locomotive_replay(
+	locomotive_id: str,
+	from_ts: datetime = Query(..., alias="from"),
+	to_ts: datetime = Query(..., alias="to"),
+	limit: int = Query(default=500, ge=1, le=2000),
+	db: AsyncSession = Depends(get_db),
+) -> ReplayResponse:
+	if to_ts <= from_ts:
+		raise HTTPException(status_code=422, detail="'to' must be greater than 'from'")
+
+	telemetry_rows = (
+		await db.execute(
+			select(TelemetryEventRecord)
+			.where(
+				TelemetryEventRecord.locomotive_id == locomotive_id,
+				TelemetryEventRecord.timestamp >= from_ts,
+				TelemetryEventRecord.timestamp <= to_ts,
+			)
+			.order_by(TelemetryEventRecord.timestamp.asc())
+			.limit(limit)
+		)
+	).scalars().all()
+
+	warning_rows = await _get_warning_history_rows_in_range(
+		db,
+		locomotive_id=locomotive_id,
+		from_ts=from_ts,
+		to_ts=to_ts,
+	)
+
+	frames: list[ReplayFrame] = []
+	for row in telemetry_rows:
+		ts = row.timestamp
+		active_rows = [wr for wr in warning_rows if _warning_active_at(wr, ts)]
+		frames.append(
+			ReplayFrame(
+				timestamp=ts,
+				locomotive_id=locomotive_id,
+				snapshot=_snapshot_from_event_row(row),
+				active_warnings=[_to_warning_response(wr) for wr in active_rows],
+			)
+		)
+
+	return ReplayResponse(
+		locomotive_id=locomotive_id,
+		from_ts=from_ts,
+		to_ts=to_ts,
+		telemetry_frames=frames,
+		warnings=[_to_warning_response(wr) for wr in warning_rows],
+		summary={
+			"frames_count": len(frames),
+			"warnings_count": len(warning_rows),
+			"limit": limit,
+		},
+	)
+
+
+@router.get("/locomotives/{locomotive_id}/replay/frames", response_model=list[ReplayFrame])
+async def get_locomotive_replay_frames(
+	locomotive_id: str,
+	from_ts: datetime = Query(..., alias="from"),
+	to_ts: datetime = Query(..., alias="to"),
+	limit: int = Query(default=500, ge=1, le=2000),
+	db: AsyncSession = Depends(get_db),
+) -> list[ReplayFrame]:
+	replay = await get_locomotive_replay(
+		locomotive_id=locomotive_id,
+		from_ts=from_ts,
+		to_ts=to_ts,
+		limit=limit,
+		db=db,
+	)
+	return replay.telemetry_frames
 
 
 @router.get("/system/metrics", response_model=SystemMetricsResponse)

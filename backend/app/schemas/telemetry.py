@@ -168,6 +168,22 @@ class LocomotiveCurrentResponse(BaseModel):
 	active_warnings: list[ActiveWarningResponse] = Field(default_factory=list)
 
 
+class ReplayFrame(BaseModel):
+	timestamp: datetime
+	locomotive_id: str
+	snapshot: dict
+	active_warnings: list[ActiveWarningResponse] = Field(default_factory=list)
+
+
+class ReplayResponse(BaseModel):
+	locomotive_id: str
+	from_ts: datetime = Field(..., alias="from")
+	to_ts: datetime = Field(..., alias="to")
+	telemetry_frames: list[ReplayFrame] = Field(default_factory=list)
+	warnings: list[ActiveWarningResponse] = Field(default_factory=list)
+	summary: dict | None = None
+
+
 class SystemMetricsResponse(BaseModel):
 	ingest_rate_per_sec: int
 	valid_events_count: int
