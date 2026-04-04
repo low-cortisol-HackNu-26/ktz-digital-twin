@@ -29,6 +29,8 @@ DEFAULT_INITIAL_STATE: dict[str, Any] = {
 	"gps_lat": 43.2389,
 	"gps_lon": 76.8897,
 	"route_segment": "ALA-NUR:000",
+	"track_condition": "normal",
+	"weather_condition": "clear",
 	"gradient_permille": 0.0,
 	"train_mass_tons": 6_500.0,
 	"active_fault_codes": [],

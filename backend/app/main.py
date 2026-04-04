@@ -5,6 +5,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.cors import CORSMiddleware
@@ -51,6 +52,12 @@ async def lifespan(_app: FastAPI):
         try:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+                await conn.execute(
+                    text("ALTER TABLE telemetry_events ADD COLUMN IF NOT EXISTS track_condition VARCHAR(32)")
+                )
+                await conn.execute(
+                    text("ALTER TABLE telemetry_events ADD COLUMN IF NOT EXISTS weather_condition VARCHAR(32)")
+                )
             logger.info("Database tables ready")
             break
         except (SQLAlchemyError, OSError) as exc:

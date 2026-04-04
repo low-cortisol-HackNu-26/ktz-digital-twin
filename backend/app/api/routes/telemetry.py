@@ -141,6 +141,28 @@ def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, An
 			recommended_action="Снизьте скорость и контролируйте состояние локомотива",
 		)
 
+	if event.track_condition in {"rough", "bad", "maintenance_zone"}:
+		severity = "critical" if event.track_condition in {"bad", "maintenance_zone"} else "warning"
+		candidates["track_condition_alert"] = _warning_definition(
+			locomotive_id=locomotive_id,
+			rule_id="track_condition_alert",
+			severity=severity,
+			title="Ухудшенные условия пути",
+			message=f"Текущий участок пути отмечен как {event.track_condition}.",
+			recommended_action="Снизьте скорость и контролируйте вибрации ходовой части",
+		)
+
+	if event.weather_condition in {"rain", "snow", "fog", "wind"}:
+		severity = "critical" if event.weather_condition in {"snow", "fog"} else "warning"
+		candidates["weather_condition_alert"] = _warning_definition(
+			locomotive_id=locomotive_id,
+			rule_id="weather_condition_alert",
+			severity=severity,
+			title="Неблагоприятные погодные условия",
+			message=f"Текущие погодные условия: {event.weather_condition}.",
+			recommended_action="Соблюдайте пониженные скоростные ограничения и повышенную дистанцию",
+		)
+
 	return candidates
 
 
@@ -439,6 +461,8 @@ async def get_latest_metrics(
 		"locomotive_id": locomotive_id,
 		"speed_kph": payload.get("speed_kph"),
 		"allowed_speed_kph": payload.get("allowed_speed_kph"),
+		"track_condition": payload.get("track_condition"),
+		"weather_condition": payload.get("weather_condition"),
 		"traction_mode": payload.get("traction_mode"),
 		"traction_power_kw": payload.get("traction_power_kw"),
 		"regen_power_kw": payload.get("regen_power_kw"),

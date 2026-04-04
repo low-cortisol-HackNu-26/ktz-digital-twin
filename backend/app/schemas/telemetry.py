@@ -40,6 +40,8 @@ class TelemetryEvent(BaseModel):
 	gps_lat: float | None = None
 	gps_lon: float | None = None
 	route_segment: str | None = Field(default=None, max_length=128)
+	track_condition: Literal["normal", "rough", "bad", "maintenance_zone"] | None = None
+	weather_condition: Literal["clear", "rain", "snow", "fog", "wind"] | None = None
 	gradient_permille: float | None = None
 	train_mass_tons: float | None = Field(default=None, ge=0)
 	active_fault_codes: list[str] = Field(default_factory=list)
