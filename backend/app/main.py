@@ -78,6 +78,12 @@ async def lifespan(_app: FastAPI):
                     text("ALTER TABLE locomotive_warnings ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ")
                 )
                 await conn.execute(
+                    text("ALTER TABLE locomotive_warnings ADD COLUMN IF NOT EXISTS status VARCHAR(16) DEFAULT 'active'")
+                )
+                await conn.execute(
+                    text("ALTER TABLE locomotive_warnings ADD COLUMN IF NOT EXISTS cleared_at TIMESTAMPTZ")
+                )
+                await conn.execute(
                     text("UPDATE locomotive_warnings SET source = COALESCE(source, 'system')")
                 )
                 await conn.execute(
@@ -85,6 +91,9 @@ async def lifespan(_app: FastAPI):
                 )
                 await conn.execute(
                     text("UPDATE locomotive_warnings SET target_id = COALESCE(NULLIF(target_id, ''), locomotive_id)")
+                )
+                await conn.execute(
+                    text("UPDATE locomotive_warnings SET status = CASE WHEN active THEN 'active' ELSE COALESCE(NULLIF(status, ''), 'cleared') END")
                 )
             logger.info("Database tables ready")
             break
