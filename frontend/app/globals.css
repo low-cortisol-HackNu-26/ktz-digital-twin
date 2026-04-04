@@ -1,27 +1,41 @@
-/* Global styles.
- *
- * Contents:
- *   @tailwind base / components / utilities
- *
- *   CSS custom properties (dark theme only — HMI is always dark):
- *     --background, --foreground, --card, --border, --radius
- *     --health-normal, --health-warning, --health-critical
- *
- *   .cabin-grid: FIXED CSS Grid — no responsive breakpoints.
- *     Fixed pixel dimensions sized for 1920×1080 HMI panels.
- *     Grid areas: health-widget | speed | alerts
- *                 fuel | pressure | electrics
- *                 trends (span 2) | map
- *
- *   .cabin-panel: fixed-size card wrapper (border, bg, padding)
- *
- *   .numeric-readout: large monospace font for speed/fuel numbers
- *
- *   .card-login-overlay: full-screen centered card tap prompt
- *
- *   Scrollbar styling for dark panels
- *
- *   @keyframes: critical-blink (alert pulse), gauge-sweep (needle init animation)
- *
- *   DO NOT add @media breakpoints — layout is fixed, not responsive.
- */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a0e14;
+  --foreground: #e8edf5;
+  --card: #121820;
+  --border: #1e2836;
+  --radius: 10px;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+/* Leaflet container must have explicit height */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  background: #0a0e14;
+  border-radius: var(--radius);
+}
+
+.panel {
+  @apply rounded-[var(--radius)] border border-cabin-border bg-cabin-panel/90 p-4 shadow-lg backdrop-blur-sm;
+}
+
+.readout {
+  @apply font-mono text-2xl font-semibold tracking-tight text-slate-100 tabular-nums;
+}
+
+.readout-sm {
+  @apply font-mono text-sm text-slate-400 tabular-nums;
+}

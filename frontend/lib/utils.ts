@@ -1,11 +1,34 @@
-// Utility functions shared across components.
-//
-// formatSpeed(kmh: number): string       — "120 km/h"
-// formatTemp(celsius: number): string    — "92°C"
-// formatPressure(bar: number): string    — "8.2 bar"
-// formatFuel(liters: number): string     — "1,240 L"
-// formatTimestamp(ms: number): string    — "14:32:07" (locale time)
-// clampToRange(value, min, max): number
-// cn(...classes): string                 — tailwind-merge + clsx helper (shadcn pattern)
-// emaSmooth(prev: number, next: number, alpha: number): number
-//   Exponential moving average: α * next + (1-α) * prev
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+export function formatSpeed(kmh: number): string {
+  return `${kmh.toFixed(1)} km/h`;
+}
+
+export function formatTemp(celsius: number): string {
+  return `${celsius.toFixed(1)}°C`;
+}
+
+export function formatPressure(bar: number): string {
+  return `${bar.toFixed(1)} bar`;
+}
+
+export function formatFuel(percent: number): string {
+  return `${percent.toFixed(1)}%`;
+}
+
+export function formatVoltage(v: number): string {
+  return `${v.toFixed(1)} V`;
+}
+
+export function clampToRange(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+export function emaSmooth(prev: number, next: number, alpha: number): number {
+  return alpha * next + (1 - alpha) * prev;
+}
