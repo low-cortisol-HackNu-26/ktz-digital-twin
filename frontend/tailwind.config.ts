@@ -10,15 +10,16 @@ const config: Config = {
     extend: {
       colors: {
         cabin: {
-          bg: "#0a0e14",
-          panel: "#121820",
-          border: "#1e2836",
+          bg: "white",
+          panel: "white",
+          border: "gray",
         },
         health: {
           normal: "#22c55e",
           warning: "#eab308",
           critical: "#ef4444",
         },
+        primary: "#374151",
       },
       fontFamily: {
         sans: ["var(--font-geist-sans)", "system-ui", "sans-serif"],

@@ -15,11 +15,6 @@ const LOC_ID = "LK-42";
 export const ROUTE_LINE: [number, number][] = [
   [43.222, 76.851],
   [43.238, 76.892],
-  [43.255, 76.935],
-  [43.268, 76.982],
-  [43.28, 77.028],
-  [43.292, 77.075],
-  [43.305, 77.12],
 ];
 
 function isoNow(): string {
@@ -42,9 +37,9 @@ function computeHealth(packet: TelemetryPacket): HealthIndex {
   score -= packet.alert_codes.length * 12;
   score = clampToRange(Math.round(score), 0, 100);
 
-  let category: HealthCategory = "NORMAL";
-  if (score < 45) category = "CRITICAL";
-  else if (score < 72) category = "WARNING";
+  let category: HealthCategory = "Норма";
+  if (score < 45) category = "Критично";
+  else if (score < 72) category = "Внимание";
 
   const candidates: string[] = [];
   if (tempStress > 0.45)

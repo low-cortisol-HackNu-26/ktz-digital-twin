@@ -33,20 +33,16 @@ function HealthCheckView() {
         <section
           className={cn(
             "panel relative overflow-hidden lg:col-span-1",
-            health.category === "CRITICAL" && "animate-critical-pulse border-health-critical/60",
-            health.category === "WARNING" && "border-health-warning/50",
-            health.category === "NORMAL" && "border-health-normal/30",
+            health.category === "Критично" && "animate-critical-pulse border-health-critical/60",
+            health.category === "Внимание" && "border-health-warning/50",
+            health.category === "Норма" && "border-health-normal/30",
           )}
         >
-          <h2 className="text-sm font-medium text-slate-400">Health index</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Mock engine — mirrors weighted score + penalties from alerts (no API).
-          </p>
           <div className="mt-4 flex items-center gap-6">
-            <div className="h-44 w-44 shrink-0">
+            <div className="h-80 w-80 shrink-0 relative">
               <ResponsiveContainer width="100%" height="100%">
                 <RadialBarChart
-                  innerRadius="68%"
+                  innerRadius="80%"
                   outerRadius="100%"
                   data={gaugeData}
                   startAngle={90}
@@ -56,29 +52,23 @@ function HealthCheckView() {
                   <RadialBar
                     background={{ fill: "rgba(148,163,184,0.12)" }}
                     dataKey="value"
-                    cornerRadius={6}
+                    cornerRadius={20}
                   />
                 </RadialBarChart>
               </ResponsiveContainer>
-            </div>
-            <div>
-              <p className="readout text-4xl text-white">{health.score}</p>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+              <p className="readout text-4xl text-primary">{health.score}</p>
               <p
                 className={cn(
                   "mt-2 inline-flex rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wide",
-                  health.category === "NORMAL" && "bg-emerald-500/15 text-emerald-300",
-                  health.category === "WARNING" && "bg-amber-500/15 text-amber-200",
-                  health.category === "CRITICAL" && "bg-rose-500/15 text-rose-200",
+                  health.category === "Норма" && "bg-emerald-500/15 text-emerald-300",
+                  health.category === "Внимание" && "bg-amber-500/15 text-amber-200",
+                  health.category === "Критично" && "bg-rose-500/15 text-rose-200",
                 )}
               >
                 {health.category}
               </p>
-              <p className="readout-sm mt-3">
-                Updated{" "}
-                {health.timestamp
-                  ? format(new Date(health.timestamp), "HH:mm:ss.SSS")
-                  : "—"}
-              </p>
+            </div>
             </div>
           </div>
           <ul className="mt-6 space-y-2 border-t border-cabin-border pt-4">

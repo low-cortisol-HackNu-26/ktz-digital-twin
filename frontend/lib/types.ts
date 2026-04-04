@@ -10,7 +10,7 @@ export type TelemetryPacket = {
   timestamp: string;
 };
 
-export type HealthCategory = "NORMAL" | "WARNING" | "CRITICAL";
+export type HealthCategory = "Норма" | "Внимание" | "Критично";
 
 export type HealthIndex = {
   score: number;

@@ -65,77 +65,22 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <header className="border-b border-cabin-border bg-cabin-panel/80 px-6 py-4 backdrop-blur">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-              KTZ digital twin
-            </p>
-            <h1 className="text-xl font-semibold text-white">
-              Railway operations dashboard
+            <div className="flex items-center gap-2">
+            <img src="/images/logo.png" alt="Logo" className="w-9 h-12" />
+            <div className="flex flex-col">
+            <h1 className="text-xl font-bold text-primary">
+              КЖД
             </h1>
-            <p className="readout-sm mt-1">
-              Locomotive <span className="text-slate-200">{loco}</span>
-              {driver ? (
-                <>
-                  <span className="mx-2 text-slate-600">·</span>
-                  <span className="text-slate-300">{driver.name}</span>
-                  <span className="mx-2 text-slate-600">·</span>
-                  {driver.role}
-                </>
-              ) : null}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div
-              className={cn(
-                "flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm",
-                connected
-                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                  : "border-rose-500/40 bg-rose-500/10 text-rose-300",
-              )}
-            >
-              <span
-                className={cn(
-                  "h-2 w-2 rounded-full",
-                  connected ? "animate-pulse bg-emerald-400" : "bg-rose-400",
-                )}
-              />
-              {connected ? "Live (simulated)" : "No connection"}
+            <p className="text-sm text-gray-500">Система мониторинга локомотивов</p>
             </div>
-            {receivedAt ? (
-              <span className="readout-sm text-slate-500">
-                Last packet{" "}
-                <span className="text-slate-300">
-                  {format(new Date(receivedAt), "HH:mm:ss")}
-                </span>
-                <span className="mx-1.5 text-slate-600">·</span>~{latency}
-                ms RTT (demo)
-              </span>
-            ) : null}
+            </div>
           </div>
-        </div>
-
-        <div
-          className="mx-auto mt-4 max-w-[1600px] border-t border-cabin-border pt-4 pointer-events-none"
-          aria-label="Screens — press Space to switch"
-        >
-          <p className="text-xs uppercase tracking-wide text-slate-500">
-            Space — next screen (no pointer)
-          </p>
-          <ol className="mt-3 flex flex-wrap gap-3" role="list">
-            {TAB_META.map(({ label, icon: Icon }, i) => (
-              <li
-                key={label}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium",
-                  i === resolvedIndex
-                    ? "border-sky-500/50 bg-sky-500/15 text-sky-100"
-                    : "border-cabin-border bg-cabin-bg/40 text-slate-500",
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-                {label}
-              </li>
-            ))}
-          </ol>
+          <div className="flex flex-col  gap-2 text-left">
+          <h1 className="text-2xl font-bold text-primary">
+              {driver?.name}
+            </h1>
+            <p className="text-sm text-gray-500">Машинист локомотива</p>
+          </div>
         </div>
       </header>
       <main className="mx-auto w-full max-w-[1600px] flex-1 px-6 py-6">{children}</main>

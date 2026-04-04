@@ -112,38 +112,7 @@ export function DashboardClient() {
           </div>
         </div>
 
-        <div
-          className="mx-auto mt-4 max-w-[1600px] border-t border-cabin-border pt-4"
-          aria-label="Current view (use Space to change)"
-        >
-          <p className="text-xs uppercase tracking-wide text-slate-500">
-            Space — next screen
-          </p>
-          <ol className="mt-3 flex flex-wrap gap-3 pointer-events-none">
-            {TAB_LABELS.map(({ label, icon: Icon }, i) => (
-              <li
-                key={label}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium",
-                  i === tab
-                    ? "border-sky-500/50 bg-sky-500/15 text-sky-100"
-                    : "border-cabin-border bg-cabin-bg/40 text-slate-500",
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-                {label}
-              </li>
-            ))}
-          </ol>
-        </div>
       </header>
-
-      <main className="mx-auto w-full max-w-[1600px] flex-1 px-6 py-6">
-        {tab === 0 ? <HealthCheckView /> : null}
-        {tab === 1 ? <TrendAlertsView /> : null}
-        {tab === 2 ? <TrendsView /> : null}
-        {tab === 3 ? <RailwayMap /> : null}
-      </main>
     </div>
   );
 }
