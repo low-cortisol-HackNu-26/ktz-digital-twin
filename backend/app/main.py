@@ -75,6 +75,9 @@ async def lifespan(_app: FastAPI):
                     text("ALTER TABLE locomotive_warnings ADD COLUMN IF NOT EXISTS warning_metadata JSONB")
                 )
                 await conn.execute(
+                    text("ALTER TABLE locomotive_warnings ADD COLUMN IF NOT EXISTS allowed_speed_kph_override DOUBLE PRECISION")
+                )
+                await conn.execute(
                     text("ALTER TABLE locomotive_warnings ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ")
                 )
                 await conn.execute(

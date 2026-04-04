@@ -18,6 +18,8 @@ class TelemetryEvent(BaseModel):
 	speed_kph: float = Field(..., ge=0)
 	target_speed_kph: float | None = Field(default=None, ge=0)
 	allowed_speed_kph: float | None = Field(default=None, ge=0)
+	base_allowed_speed_kph: float | None = Field(default=None, ge=0)
+	effective_allowed_speed_kph: float | None = Field(default=None, ge=0)
 	acceleration: float | None = None
 	traction_mode: Literal["traction", "coast", "braking", "regen"]
 	tractive_effort_kn: float | None = None
@@ -125,6 +127,7 @@ class ActiveWarningResponse(BaseModel):
 	message: str
 	recommended_action: str
 	status: Literal["active", "cleared", "expired"]
+	allowed_speed_kph_override: float | None = Field(default=None, ge=0)
 	created_by: str | None = None
 	metadata: dict | None = None
 	expires_at: datetime | None = None
@@ -150,6 +153,7 @@ class ManualWarningCreateRequest(BaseModel):
 	recommended_action: str = Field(..., min_length=1)
 	duration_seconds: int = Field(..., ge=1, le=86400)
 	source: Literal["dispatcher", "admin"]
+	allowed_speed_kph_override: float | None = Field(default=None, ge=0)
 	created_by: str | None = Field(default=None, max_length=128)
 	metadata: dict | None = None
 

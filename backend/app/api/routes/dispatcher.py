@@ -75,6 +75,7 @@ async def create_manual_warning(
 			recommended_action=body.recommended_action,
 			created_by=body.created_by,
 			warning_metadata=body.metadata,
+			allowed_speed_kph_override=body.allowed_speed_kph_override,
 			expires_at=expires_at,
 			status="active",
 			cleared_at=None,

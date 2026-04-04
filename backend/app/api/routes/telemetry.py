@@ -324,6 +324,42 @@ def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, An
 	return candidates
 
 
+async def _compute_effective_allowed_speed_kph(
+	db: AsyncSession,
+	*,
+	locomotive_id: str,
+	base_allowed_speed_kph: float | None,
+	route_segment: str | None,
+) -> float | None:
+	await _expire_outdated_warnings(db, locomotive_id=locomotive_id)
+	rows = (
+		await db.execute(
+			select(LocomotiveWarning)
+			.where(
+				LocomotiveWarning.locomotive_id == locomotive_id,
+				LocomotiveWarning.active.is_(True),
+				LocomotiveWarning.allowed_speed_kph_override.is_not(None),
+				LocomotiveWarning.source.in_(["dispatcher", "admin"]),
+			)
+		)
+	).scalars().all()
+
+	applicable_overrides: list[float] = []
+	for row in rows:
+		if row.target_type == "locomotive" and row.target_id == locomotive_id:
+			applicable_overrides.append(float(row.allowed_speed_kph_override))
+		elif row.target_type == "route_segment" and route_segment and row.target_id == route_segment:
+			applicable_overrides.append(float(row.allowed_speed_kph_override))
+
+	if not applicable_overrides:
+		return base_allowed_speed_kph
+
+	strictest_override = min(applicable_overrides)
+	if base_allowed_speed_kph is None:
+		return strictest_override
+	return min(float(base_allowed_speed_kph), strictest_override)
+
+
 def _to_warning_response(row: LocomotiveWarning) -> ActiveWarningResponse:
 	return ActiveWarningResponse(
 		warning_id=row.warning_id,
@@ -337,6 +373,7 @@ def _to_warning_response(row: LocomotiveWarning) -> ActiveWarningResponse:
 		message=row.message,
 		recommended_action=row.recommended_action,
 		status=row.status,
+		allowed_speed_kph_override=row.allowed_speed_kph_override,
 		created_by=row.created_by,
 		metadata=row.warning_metadata,
 		expires_at=row.expires_at,
@@ -482,6 +519,24 @@ def _warning_active_at(row: LocomotiveWarning, ts: datetime) -> bool:
 	return row.cleared_at > ts
 
 
+def _compute_effective_allowed_speed_from_active_warnings(
+	*,
+	base_allowed_speed_kph: float | None,
+	active_warnings: list[ActiveWarningResponse],
+) -> float | None:
+	overrides = [
+		float(item.allowed_speed_kph_override)
+		for item in active_warnings
+		if item.allowed_speed_kph_override is not None
+	]
+	if not overrides:
+		return base_allowed_speed_kph
+	strictest = min(overrides)
+	if base_allowed_speed_kph is None:
+		return strictest
+	return min(float(base_allowed_speed_kph), strictest)
+
+
 async def _get_warning_history_rows_in_range(
 	db: AsyncSession,
 	*,
@@ -557,7 +612,15 @@ async def ingest_telemetry(
 	started = time.perf_counter()
 	for event in valid_events:
 		await _ensure_locomotive(db, event.locomotive_id)
-		active_warnings = await _sync_warnings_for_event(db, event)
+		base_allowed_speed = float(event.allowed_speed_kph) if event.allowed_speed_kph is not None else None
+		effective_allowed_speed = await _compute_effective_allowed_speed_kph(
+			db,
+			locomotive_id=event.locomotive_id,
+			base_allowed_speed_kph=base_allowed_speed,
+			route_segment=event.route_segment,
+		)
+		event_for_warnings = event.model_copy(update={"allowed_speed_kph": effective_allowed_speed})
+		active_warnings = await _sync_warnings_for_event(db, event_for_warnings)
 		event_payload = event.model_dump(
 			exclude={
 				"ingestion_time",
@@ -571,6 +634,9 @@ async def ingest_telemetry(
 		db.add(record)
 
 		snapshot_payload = _to_event_dict(event)
+		snapshot_payload["base_allowed_speed_kph"] = base_allowed_speed
+		snapshot_payload["effective_allowed_speed_kph"] = effective_allowed_speed
+		snapshot_payload["allowed_speed_kph"] = effective_allowed_speed
 		snapshot_payload["active_warnings"] = [
 			_to_warning_response(row).model_dump(mode="json") for row in active_warnings
 		]
@@ -697,19 +763,64 @@ async def get_current(
 	row = (
 		await db.execute(select(CurrentSnapshot).where(CurrentSnapshot.locomotive_id == locomotive_id))
 	).scalar_one_or_none()
+	active_warnings = await _get_active_warnings(db, locomotive_id)
 	event = None
 	if row is not None:
 		merged_payload = _recompute_derived_metrics_live(dict(row.payload))
+		base_allowed = merged_payload.get("base_allowed_speed_kph")
+		if base_allowed is None:
+			base_allowed = merged_payload.get("allowed_speed_kph")
+		base_allowed_val = float(base_allowed) if base_allowed is not None else None
+		effective_allowed = _compute_effective_allowed_speed_from_active_warnings(
+			base_allowed_speed_kph=base_allowed_val,
+			active_warnings=active_warnings,
+		)
+		merged_payload["base_allowed_speed_kph"] = base_allowed_val
+		merged_payload["effective_allowed_speed_kph"] = effective_allowed
+		merged_payload["allowed_speed_kph"] = effective_allowed
 		if merged_payload != row.payload:
 			row.payload = merged_payload
 			row.updated_at = _utcnow()
 		event = TelemetryEvent.model_validate(merged_payload)
-	active_warnings = await _get_active_warnings(db, locomotive_id)
 	return LocomotiveCurrentResponse(
 		locomotive_id=locomotive_id,
 		event=event,
 		active_warnings=active_warnings,
 	)
+
+
+@router.get("/locomotives/{locomotive_id}/latest-metrics")
+async def get_latest_metrics(
+	locomotive_id: str,
+	db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+	current = await get_current(locomotive_id=locomotive_id, db=db)
+	if current.event is None:
+		raise HTTPException(status_code=404, detail="No telemetry for locomotive")
+
+	payload = current.event.model_dump(mode="json")
+	active_warnings = current.active_warnings
+	warnings_summary = {
+		"active_count": len(active_warnings),
+		"critical_count": len([item for item in active_warnings if item.severity == "critical"]),
+		"warning_count": len([item for item in active_warnings if item.severity == "warning"]),
+	}
+	return {
+		"locomotive_id": locomotive_id,
+		"speed_kph": payload.get("speed_kph"),
+		"allowed_speed_kph": payload.get("allowed_speed_kph"),
+		"base_allowed_speed_kph": payload.get("base_allowed_speed_kph"),
+		"effective_allowed_speed_kph": payload.get("effective_allowed_speed_kph"),
+		"route_progress_percent": payload.get("route_progress_percent"),
+		"distance_to_destination_km": payload.get("distance_to_destination_km"),
+		"eta_seconds": payload.get("eta_seconds"),
+		"eta_timestamp": payload.get("eta_timestamp"),
+		"track_condition": payload.get("track_condition"),
+		"weather_condition": payload.get("weather_condition"),
+		"timestamp": payload.get("timestamp"),
+		"active_warnings": [item.model_dump(mode="json") for item in active_warnings],
+		"warnings_summary": warnings_summary,
+	}
 
 
 @router.get("/locomotives/{locomotive_id}/history")
