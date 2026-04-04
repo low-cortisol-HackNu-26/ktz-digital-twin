@@ -636,50 +636,6 @@ async def get_history(
 	]
 
 
-@router.get("/locomotives/{locomotive_id}/latest-metrics")
-async def get_latest_metrics(
-	locomotive_id: str,
-	db: AsyncSession = Depends(get_db),
-) -> dict[str, Any]:
-	row = (
-		await db.execute(select(CurrentSnapshot).where(CurrentSnapshot.locomotive_id == locomotive_id))
-	).scalar_one_or_none()
-	if row is None:
-		raise HTTPException(status_code=404, detail="No telemetry for locomotive")
-
-	payload = row.payload
-	active_warnings = await _get_active_warnings(db, locomotive_id)
-	warnings_summary = {
-		"active_count": len(active_warnings),
-		"critical_count": len([item for item in active_warnings if item.severity == "critical"]),
-		"warning_count": len([item for item in active_warnings if item.severity == "warning"]),
-	}
-	return {
-		"locomotive_id": locomotive_id,
-		"speed_kph": payload.get("speed_kph"),
-		"allowed_speed_kph": payload.get("allowed_speed_kph"),
-		"route_progress_percent": payload.get("route_progress_percent"),
-		"distance_to_destination_km": payload.get("distance_to_destination_km"),
-		"eta_seconds": payload.get("eta_seconds"),
-		"eta_timestamp": payload.get("eta_timestamp"),
-		"track_condition": payload.get("track_condition"),
-		"weather_condition": payload.get("weather_condition"),
-		"traction_mode": payload.get("traction_mode"),
-		"traction_power_kw": payload.get("traction_power_kw"),
-		"regen_power_kw": payload.get("regen_power_kw"),
-		"transformer_temp_c": payload.get("transformer_temp_c"),
-		"converter_temp_c": payload.get("converter_temp_c"),
-		"traction_motor_temp_c": payload.get("traction_motor_temp_c"),
-		"axle_bearing_temp_c": payload.get("axle_bearing_temp_c"),
-		"pneumatic_pressure_bar": payload.get("pneumatic_pressure_bar"),
-		"signal_quality": payload.get("signal_quality"),
-		"data_quality": payload.get("data_quality"),
-		"timestamp": payload.get("timestamp"),
-		"active_warnings": [item.model_dump(mode="json") for item in active_warnings],
-		"warnings_summary": warnings_summary,
-	}
-
-
 @router.get("/locomotives/{locomotive_id}/warnings", response_model=list[ActiveWarningResponse])
 async def get_locomotive_warnings(
 	locomotive_id: str,
