@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatSpeed(kmh: number): string {
-  return `${kmh.toFixed(1)} km/h`;
+  return `${kmh.toFixed(1)}`;
 }
 
 export function formatTemp(celsius: number): string {
