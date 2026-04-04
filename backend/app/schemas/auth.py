@@ -47,6 +47,11 @@ class RefreshResponse(BaseModel):
     driver: DriverInfo
 
 
+class OAuthTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
 class LogoutResponse(BaseModel):
     detail: str
 

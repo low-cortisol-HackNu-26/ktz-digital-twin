@@ -6,10 +6,11 @@ import secrets
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..deps import get_current_user, get_db
+from ..deps import get_current_user, get_current_user_optional, get_db
 from ...auth.jwt import (
     decode_token,
     issue_access_token,
@@ -24,6 +25,7 @@ from ...schemas.auth import (
     DriverInfo,
     LoginRequest,
     LogoutResponse,
+    OAuthTokenResponse,
     RegisterRequest,
     RefreshRequest,
     RefreshResponse,
@@ -74,8 +76,43 @@ def _driver_info_from_user(user: DriverAccount) -> DriverInfo:
     )
 
 
+async def _authenticate_user(uid: str, password: str, db: AsyncSession) -> DriverAccount:
+    user_result = await db.execute(select(DriverAccount).where(DriverAccount.company_id == uid))
+    user = user_result.scalar_one_or_none()
+
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid ID or password")
+
+    if not _verify_password(password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid ID or password")
+
+    return user
+
+
 @router.post("/register", response_model=DriverInfo, status_code=status.HTTP_201_CREATED)
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)) -> DriverInfo:
+async def register(
+    payload: RegisterRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenClaims | None = Depends(get_current_user_optional),
+) -> DriverInfo:
+    total_users_result = await db.execute(select(func.count()).select_from(DriverAccount))
+    total_users = int(total_users_result.scalar_one() or 0)
+
+    if total_users == 0:
+        if payload.role != "Admin":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The first registered user must have Admin role",
+            )
+    else:
+        if current_user is None or current_user.role != "Admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Admin users can register new accounts",
+            )
+
     existing_result = await db.execute(
         select(DriverAccount).where(DriverAccount.company_id == payload.uid)
     )
@@ -98,18 +135,54 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     return _driver_info_from_user(user)
 
 
+@router.post("/token", response_model=OAuthTokenResponse)
+async def token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_db),
+) -> OAuthTokenResponse:
+    user = await _authenticate_user(form_data.username, form_data.password, db)
+    if user.role != "Admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Swagger authorization is allowed only for Admin users",
+        )
+
+    session_id = str(uuid4())
+    access_token, _, _ = issue_access_token(
+        user_id=user.id,
+        company_id=user.company_id,
+        name=user.name,
+        role=user.role,
+        locomotive_id=user.locomotive_id,
+        session_id=session_id,
+    )
+    _, refresh_expires_at, refresh_jti = issue_refresh_token(
+        user_id=user.id,
+        company_id=user.company_id,
+        name=user.name,
+        role=user.role,
+        locomotive_id=user.locomotive_id,
+        session_id=session_id,
+    )
+
+    db.add(
+        AuthSession(
+            id=session_id,
+            user_id=user.id,
+            refresh_jti=refresh_jti,
+            expires_at=refresh_expires_at,
+            last_used_at=utcnow(),
+        )
+    )
+    user.last_login_at = utcnow()
+    await db.flush()
+
+    return OAuthTokenResponse(access_token=access_token, token_type="bearer")
+
+
 @router.post("/card", response_model=SessionResponse)
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> SessionResponse:
-    user_result = await db.execute(select(DriverAccount).where(DriverAccount.company_id == payload.uid))
-    user = user_result.scalar_one_or_none()
-
-    if user is None or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid ID or password")
-
-    if not _verify_password(payload.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid ID or password")
+    user = await _authenticate_user(payload.uid, payload.password, db)
 
     session_id = str(uuid4())
     access_token, access_expires_at, _ = issue_access_token(

@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator, Callable
 from datetime import datetime, timezone
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +13,7 @@ from ..db.session import get_session
 from ..models.user import AuthSession, DriverAccount
 from ..schemas.auth import TokenClaims
 
-bearer_scheme = HTTPBearer(auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token", auto_error=False)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -26,14 +26,16 @@ def _utcnow() -> datetime:
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    token: str | None = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> TokenClaims:
-    if credentials is None:
+    if not token:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing bearer token",
+        )
 
-    claims = decode_token(credentials.credentials, expected_type="access")
+    claims = decode_token(token, expected_type="access")
 
     session_result = await db.execute(select(AuthSession).where(AuthSession.id == claims.sid))
     auth_session = session_result.scalar_one_or_none()
@@ -53,6 +55,15 @@ async def get_current_user(
 
     auth_session.last_used_at = _utcnow()
     return claims
+
+
+async def get_current_user_optional(
+    token: str | None = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> TokenClaims | None:
+    if not token:
+        return None
+    return await get_current_user(token=token, db=db)
 
 
 def require_role(*roles: str) -> Callable[[TokenClaims], TokenClaims]:
