@@ -2,7 +2,7 @@ services:
   nginx:
     build: ./infra/nginx
     ports: ["80:80", "443:443"]
-    depends_on: [frontend, backend]
+    depends_on: [frontend, backend, dispatcher]
 
   frontend:
     build: ./frontend
@@ -54,6 +54,22 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  dispatcher:
+    build:
+      context: .
+      dockerfile: dispatcher/Dockerfile
+    ports: ["8002:8002"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=${JWT_SECRET}
+      - ALLOWED_ORIGINS=http://localhost:3000,http://nginx
 
   redis:
     image: redis:7-alpine
