@@ -4,6 +4,7 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import ValidationError
@@ -125,7 +126,6 @@ def _warning_definition(
 	recommended_action: str,
 ) -> dict[str, Any]:
 	return {
-		"warning_id": f"{source}:{target_type}:{target_id}:{rule_id}",
 		"locomotive_id": locomotive_id,
 		"rule_id": rule_id,
 		"source": source,
@@ -142,6 +142,10 @@ def _warning_definition(
 		"cleared_at": None,
 		"active": True,
 	}
+
+
+def _new_warning_id(*, locomotive_id: str, rule_id: str) -> str:
+	return f"warn:{locomotive_id}:{rule_id}:{uuid4().hex}"
 
 
 def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, Any]]:
@@ -328,16 +332,22 @@ async def _sync_warnings_for_event(db: AsyncSession, event: TelemetryEvent) -> l
 				LocomotiveWarning.locomotive_id == event.locomotive_id,
 				LocomotiveWarning.source == "system",
 				LocomotiveWarning.target_type == "locomotive",
+				LocomotiveWarning.active.is_(True),
 			)
 		)
 	).scalars().all()
-	rows_by_rule = {row.rule_id: row for row in rows}
+	rows_by_rule: dict[str, LocomotiveWarning] = {}
+	for row in rows:
+		rows_by_rule.setdefault(row.rule_id, row)
 
 	for rule_id, warning in candidates.items():
 		row = rows_by_rule.get(rule_id)
 		if row is None:
 			row = LocomotiveWarning(
-				warning_id=warning["warning_id"],
+				warning_id=_new_warning_id(
+					locomotive_id=warning["locomotive_id"],
+					rule_id=warning["rule_id"],
+				),
 				locomotive_id=warning["locomotive_id"],
 				rule_id=warning["rule_id"],
 				source=warning["source"],
