@@ -70,6 +70,9 @@ metrics = ServiceMetrics()
 redis_client: Redis | None = None
 _redis_listener_task: asyncio.Task[None] | None = None
 
+# Route cache — populated at startup so ingest doesn't query DB per packet
+cached_routes: list[Any] = []
+
 
 async def startup_runtime() -> None:
     global redis_client, _redis_listener_task

@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     WS_MAX_CLIENTS_PER_LOCO: int = 50
     TOKEN_LIFETIME_HOURS: int = 8
     REFRESH_TOKEN_DAYS: int = 7
+    KNOWN_LOCOMOTIVES: str = "KZ8A-0001,KZ8A-0002,KZ8A-0003"
 
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE), env_file_encoding="utf-8", extra="ignore")

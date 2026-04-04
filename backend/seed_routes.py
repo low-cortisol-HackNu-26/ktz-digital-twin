@@ -10,6 +10,7 @@ Idempotent: routes with duplicate codes are skipped.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import asyncpg
 from sqlalchemy import select
@@ -19,7 +20,10 @@ from app.config import settings
 from app.db.session import Base
 from app.models import AuthSession, DriverAccount, LocomotivePosition, Route  # noqa: F401
 
-ROUTES: list[dict] = [
+# Load from simulator-fetched JSON if available, otherwise use hardcoded fallback
+_ROUTES_FILE = Path(__file__).parent.parent / "simulator" / "data" / "ktz_routes.json"
+
+_FALLBACK_ROUTES: list[dict] = [
     {
         "code": "ALA-NUR",
         "name": "Almaty — Nur-Sultan",
@@ -71,6 +75,14 @@ ROUTES: list[dict] = [
         ],
     },
 ]
+
+if _ROUTES_FILE.exists():
+    import json as _json
+    ROUTES: list[dict] = _json.loads(_ROUTES_FILE.read_text())
+    print(f"  loaded {len(ROUTES)} routes from {_ROUTES_FILE}")
+else:
+    ROUTES = _FALLBACK_ROUTES
+    print(f"  using {len(ROUTES)} hardcoded fallback routes (run simulator/fetch_routes.py for real OSM data)")
 
 
 def _parse_url() -> dict:

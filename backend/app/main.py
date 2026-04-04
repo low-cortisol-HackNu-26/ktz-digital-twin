@@ -14,6 +14,8 @@ from .api.routes.health import router as health_router
 from .api.routes.map import router as map_router
 from .api.routes.telemetry import router as telemetry_router
 from .config import settings
+from .core.loco_seeder import seed_locomotives_if_missing
+from .core.route_seeder import seed_routes_if_empty
 from .core.runtime_state import shutdown_runtime, startup_runtime
 from .db.session import Base, engine
 from .models import (  # noqa: F401
@@ -56,6 +58,15 @@ async def lifespan(_app: FastAPI):
                 break
             logger.warning("DB init attempt %s/5 failed, retrying in 2s: %s", attempt, exc)
             await asyncio.sleep(2)
+
+    from sqlalchemy import select as _select
+    from .db.session import AsyncSessionLocal
+    from .core.runtime_state import cached_routes as _cached_routes
+    async with AsyncSessionLocal() as session:
+        await seed_routes_if_empty(session)
+        await seed_locomotives_if_missing(session)
+        from .models.route import Route as _Route
+        _cached_routes[:] = (await session.execute(_select(_Route))).scalars().all()
 
     yield
 

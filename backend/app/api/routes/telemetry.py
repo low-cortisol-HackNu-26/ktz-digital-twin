@@ -10,7 +10,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..deps import get_db
-from ...core.runtime_state import metrics, publish_event
+from ...core.route_matcher import match_position
+from ...core.runtime_state import cached_routes, metrics, publish_event
+from ...models.route import LocomotivePosition
 from ...models.telemetry import CurrentSnapshot, IngestionStat, Locomotive, TelemetryEventRecord
 from ...schemas.telemetry import (
 	IngestionStatsResponse,
@@ -112,6 +114,40 @@ async def ingest_telemetry(
 
 		metrics.record_event_seen(event.locomotive_id, event.timestamp)
 		await publish_event(snapshot_payload)
+
+		# ── upsert LocomotivePosition so /api/map/fleet stays live ─────
+		if event.gps_lat is not None and event.gps_lon is not None:
+			snap = match_position(event.gps_lat, event.gps_lon, cached_routes)
+			lp = (
+				await db.execute(
+					select(LocomotivePosition).where(
+						LocomotivePosition.locomotive_id == event.locomotive_id
+					)
+				)
+			).scalar_one_or_none()
+			if lp is None:
+				lp = LocomotivePosition(locomotive_id=event.locomotive_id)
+				db.add(lp)
+			lp.lat = event.gps_lat
+			lp.lng = event.gps_lon
+			lp.speed = event.speed_kph
+			lp.updated_at = _utcnow()
+			if snap is not None:
+				lp.route_id = snap.route_id
+				lp.route_code = snap.route_code
+				lp.route_name = snap.route_name
+				lp.snapped_lat = snap.snapped_lat
+				lp.snapped_lng = snap.snapped_lng
+				lp.distance_to_route_m = snap.distance_km * 1000
+				lp.progress_pct = snap.progress_pct
+			else:
+				lp.route_id = None
+				lp.route_code = None
+				lp.route_name = None
+				lp.snapped_lat = None
+				lp.snapped_lng = None
+				lp.distance_to_route_m = None
+				lp.progress_pct = None
 
 	for item in invalid_items:
 		# Attribute invalid records to a synthetic bucket while preserving per-item errors.
