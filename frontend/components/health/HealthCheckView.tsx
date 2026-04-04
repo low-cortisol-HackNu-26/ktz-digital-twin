@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   RadialBar,
   RadialBarChart,
@@ -11,7 +11,21 @@ import {
   useLocomotiveTelemetryHealth,
   resolveHealthLocomotiveId,
 } from "@/hooks/useLocomotiveTelemetryHealth";
+import type { TelemetryEventCurrent } from "@/lib/telemetryApi";
 import { cn } from "@/lib/utils";
+import {
+  AlertCircle,
+  BatteryCharging,
+  Cable,
+  Cog,
+  Droplet,
+  Gauge,
+  Plug,
+  Thermometer,
+  Wind,
+  Zap,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 function HealthCheckView() {
   const locomotiveId = resolveHealthLocomotiveId();
@@ -69,7 +83,12 @@ function HealthCheckView() {
     ],
     [overspeed],
   );
-  
+
+  const speedKphForNeedle =
+    event != null && typeof event.speed_kph === "number"
+      ? Math.min(160, Math.max(0, event.speed_kph))
+      : 0;
+
   const gaugeTrackColor =
     health.category === "Критично"
       ? "rgba(255,255,255,0.9)"
@@ -80,13 +99,20 @@ function HealthCheckView() {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 lg:grid-cols-2 ">
+        <div
+          className={cn(
+            "rounded-xl p-2",
+            health.category === "Норма" && "animate-health-halo-normal",
+            health.category === "Внимание" && "animate-health-halo-warning",
+            health.category === "Критично" && "animate-health-halo-critical",
+          )}
+        >
         <section
           className={cn(
-            "w-full relative overflow-hidden col-span-1 bg-slate-100/40 rounded-lg h-80",
-            health.category === "Критично" &&
-              "animate-critical-pulse border-health-critical/60",
-            health.category === "Внимание" && "border-health-warning/50",
-            health.category === "Норма" && "border-health-normal/30",
+            "w-full relative overflow-hidden col-span-1 rounded-lg border-2 bg-slate-100/40 h-[350px]",
+            health.category === "Критично" && "border-red-500/80",
+            health.category === "Внимание" && "border-amber-400/85",
+            health.category === "Норма" && "border-emerald-500/50",
           )}
         >
           <div className="mt-[0] flex items-center w-full">
@@ -140,6 +166,7 @@ function HealthCheckView() {
             </div>
           </div>
         </section>
+        </div>
         <section className="w-full relative  lg:col-span-1 bg-slate-100/40 rounded-lg flex items-center justify-center  h-max-[200px]">
           <img src="/images/speed.svg" alt="Speed" className="w-80 h-64 z-2" />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-0">
@@ -155,42 +182,44 @@ function HealthCheckView() {
             </p>
           </div>
           <div className="absolute mx-auto aspect-square w-[376px] mt-[44px]">
-              <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%">
               <RadialBarChart
-                    data={speedGauge}
-                    innerRadius="72%"
-                    outerRadius="80%"
-                    startAngle={225}
-                    endAngle={-45}
-                  >
-                    <PolarAngleAxis
-                      type="number"
-                      domain={[0, 100]}
-                      tick={false}
-                      axisLine={false}
-                    />
-                    <RadialBar
-                      dataKey="value"
-                      cornerRadius={0}
-                      background={{ fill: gaugeTrackColor }}
-                    />
-                  </RadialBarChart>
-                </ResponsiveContainer>
-              </div>
-          
+                data={speedGauge}
+                innerRadius="72%"
+                outerRadius="80%"
+                startAngle={225}
+                endAngle={-45}
+              >
+                <PolarAngleAxis
+                  type="number"
+                  domain={[0, 100]}
+                  tick={false}
+                  axisLine={false}
+                />
+                <RadialBar
+                  dataKey="value"
+                  cornerRadius={0}
+                  background={{ fill: gaugeTrackColor }}
+                />
+              </RadialBarChart>
+            </ResponsiveContainer>
+            <SpeedometerNeedle speedKph={speedKphForNeedle} maxKph={160} />
+          </div>
         </section>
       </div>
-
+      <section className="rounded-xl border border-cyan-950/50 bg-slate-100/40 p-5 shadow-inner">
+        <TelemetryMetricsGrid event={event} overspeed={overspeed} />
+      </section>
       <section className="panel">
-        <h2 className="text-sm font-medium text-slate-400">
+        <h2 className="text-sm font-medium text-primary">
           Телеметрия (wire)
         </h2>
         <p className="mt-1 text-xs text-slate-500">
           JSON из{" "}
-          <code className="text-slate-400">GET /api/locomotives/{locomotiveId}/current</code>
+          <code className="text-primary">GET /api/locomotives/{locomotiveId}/current</code>
           — событие симулятора и активные предупреждения.
         </p>
-        <pre className="readout-sm mt-4 max-h-64 overflow-auto rounded-lg bg-black/40 p-4 text-slate-300">
+        <pre className=" mt-4 max-h-64 overflow-auto rounded-lg bg-white p-4 text-primary">
           {JSON.stringify(wirePayload, null, 2)}
         </pre>
       </section>
@@ -205,4 +234,318 @@ function gaugeColor(score: number) {
   if (score < 45) return "#ef4444";
   if (score < 72) return "#eab308";
   return "#22c55e";
+}
+
+type PanelSeverity = "normal" | "warning" | "critical";
+
+function formatTelemetryNum(n: number | undefined | null, digits = 1): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return n.toFixed(digits);
+}
+
+function maxDriveTempC(e: TelemetryEventCurrent): number | null {
+  const vals = [
+    e.transformer_temp_c,
+    e.converter_temp_c,
+    e.traction_motor_temp_c,
+  ].filter((v): v is number => typeof v === "number" && !Number.isNaN(v));
+  if (vals.length === 0) return null;
+  return Math.max(...vals);
+}
+
+function driveTempSeverity(temp: number | null): PanelSeverity {
+  if (temp == null) return "normal";
+  if (temp >= 110) return "critical";
+  if (temp >= 95) return "warning";
+  return "normal";
+}
+
+function brakePipeSeverity(bar: number | undefined): PanelSeverity {
+  if (bar == null || Number.isNaN(bar)) return "normal";
+  if (bar < 3.0) return "critical";
+  if (bar < 4.2) return "warning";
+  return "normal";
+}
+
+function pneumaticSeverity(bar: number | undefined): PanelSeverity {
+  if (bar == null || Number.isNaN(bar)) return "normal";
+  if (bar < 5.0) return "critical";
+  if (bar < 6.0) return "warning";
+  return "normal";
+}
+
+function voltageSeverity(kv: number | undefined): PanelSeverity {
+  if (kv == null || Number.isNaN(kv)) return "normal";
+  if (kv < 17) return "critical";
+  if (kv < 20) return "warning";
+  return "normal";
+}
+
+function electricitySeverity(
+  e: number | undefined,
+): PanelSeverity {
+  if (e == null || Number.isNaN(e)) return "normal";
+  const a = Math.abs(e);
+  if (a >= 50) return "critical";
+  if (a >= 30) return "warning";
+  return "normal";
+}
+
+function fuelSeverity(
+  e: number | undefined
+): PanelSeverity {
+  if (e == null || Number.isNaN(e)) return "critical";
+  const a = Math.abs(e);
+  if (a >= 70) return "normal";
+  if (a >= 40) return "warning";
+  return "critical";
+}
+
+function currentSeverity(amps: number | undefined): PanelSeverity {
+  if (amps == null || Number.isNaN(amps)) return "normal";
+  const a = Math.abs(amps);
+  if (a >= 900) return "critical";
+  if (a >= 600) return "warning";
+  return "normal";
+}
+
+function TelemetryMetricsGrid({
+  event,
+  overspeed,
+}: {
+  event: TelemetryEventCurrent | null | undefined;
+  overspeed: boolean;
+}) {
+  if (event == null) {
+    return (
+      <p className="py-10 text-center text-sm text-slate-400">
+        Нет данных телеметрии (ожидается событие из /current).
+      </p>
+    );
+  }
+
+  const driveTemp = maxDriveTempC(event);
+
+  const panels: {
+    label: string;
+    value: string;
+    unit: string;
+    severity: PanelSeverity;
+    Icon: LucideIcon;
+  }[] = [
+    {
+      label: event.traction_type=="electric" ? "ЭЛЕКТРИЧЕСТВО": "ТОПЛИВО",
+      value: event.traction_type=="electric" ? formatTelemetryNum(event.energy_consumption_kwh, 0):formatTelemetryNum(event.fuel_level_percent, 0),
+      unit: event.traction_type=="electric" ? "W":"L",
+      severity: event.traction_type=="electric" ? electricitySeverity(event.energy_consumption_kwh) : fuelSeverity(event.fuel_level_percent),
+      Icon: event.traction_type=="electric" ? BatteryCharging: Droplet,
+    },
+    {
+      label: "ДВИГ. °C",
+      value: driveTemp != null ? formatTelemetryNum(driveTemp, 1) : "—",
+      unit: "°C",
+      severity: driveTempSeverity(driveTemp),
+      Icon: Cog,
+    },
+    {
+      label: "ТОРМОЗ",
+      value: formatTelemetryNum(event.brake_pipe_pressure_bar, 1),
+      unit: "bar",
+      severity: brakePipeSeverity(event.brake_pipe_pressure_bar),
+      Icon: AlertCircle,
+    },
+    {
+      label: "ДАВЛЕНИЕ",
+      value: formatTelemetryNum(event.pneumatic_pressure_bar, 1),
+      unit: "bar",
+      severity: pneumaticSeverity(event.pneumatic_pressure_bar),
+      Icon: Gauge,
+    },
+    {
+      label: "НАПРЯЖЕНИЕ",
+      value: formatTelemetryNum(event.catenary_voltage_kv, 1),
+      unit: "кВ",
+      severity: voltageSeverity(event.catenary_voltage_kv),
+      Icon: Plug,
+    },
+    {
+      label: "ТОК",
+      value: formatTelemetryNum(event.traction_current_a, 0),
+      unit: "А",
+      severity: currentSeverity(event.traction_current_a),
+      Icon: Zap,
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+      {panels.map((p) => (
+        <TelemetryPanel key={p.label} {...p} />
+      ))}
+    </div>
+  );
+}
+
+function TelemetryPanel({
+  label,
+  value,
+  unit,
+  severity,
+  Icon,
+}: {
+  label: string;
+  value: string;
+  unit: string;
+  severity: PanelSeverity;
+  Icon: LucideIcon;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-h-[104px] items-center justify-between gap-3 rounded-xl bg-white px-4 py-3 transition-shadow duration-300",
+        severity === "normal" &&
+          "ring-1 ring-slate-200/90 shadow-sm shadow-slate-200/40 ",
+        severity === "warning" &&
+          "border-4 border-amber-500 ring-amber-500 animate-panel-glow-warning ",
+        severity === "critical" && "border-8 border-red-500 ring-red-500 animate-panel-glow-critical",
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-2xl font-semibold uppercase tracking-wider text-slate-500">
+          {label}
+        </p>
+        <p className="mt-1 flex flex-wrap items-baseline gap-1.5">
+          <span className="text-6xl font-bold tabular-nums text-slate-800">
+            {value}
+          </span>
+          <span className="text-base font-semibold text-slate-600">{unit}</span>
+        </p>
+      </div>
+      <div
+        className={cn(
+          "flex h-12 w-12 shrink-0 items-center justify-center rounded-lg mr-4",
+          severity === "normal" && "text-emerald-600",
+          severity === "warning" && "text-amber-500",
+          severity === "critical" && "text-red-500",
+        )}
+      >
+        <Icon className="h-16 w-16 stroke-[2.0]" aria-hidden />
+      </div>
+    </div>
+  );
+}
+
+/** Same polar convention as Recharts RadialBarChart (see PolarUtils). */
+function polarToCartesian(
+  cx: number,
+  cy: number,
+  radius: number,
+  angleDeg: number,
+): { x: number; y: number } {
+  const rad = (Math.PI / 180) * angleDeg;
+  return {
+    x: cx + Math.cos(-rad) * radius,
+    y: cy + Math.sin(-rad) * radius,
+  };
+}
+
+const SPEED_GAUGE_START = 225;
+const SPEED_GAUGE_END = -45;
+
+/** Ease current → target each frame (higher = snappier, lower = smoother). */
+const NEEDLE_BLEND = 0.14;
+const NEEDLE_EPS_DEG = 0.06;
+
+function needleAngleFromSpeed(speedKph: number, maxKph: number): number {
+  const t = maxKph > 0 ? Math.min(1, Math.max(0, speedKph / maxKph)) : 0;
+  return SPEED_GAUGE_START + t * (SPEED_GAUGE_END - SPEED_GAUGE_START);
+}
+
+function useSmoothedNeedleAngle(targetDeg: number): number {
+  const [displayDeg, setDisplayDeg] = useState(targetDeg);
+  const displayRef = useRef(targetDeg);
+  const targetRef = useRef(targetDeg);
+  targetRef.current = targetDeg;
+
+  useEffect(() => {
+    let raf = 0;
+
+    const step = () => {
+      const goal = targetRef.current;
+      let cur = displayRef.current;
+      const delta = goal - cur;
+      if (Math.abs(delta) < NEEDLE_EPS_DEG) {
+        if (cur !== goal) {
+          cur = goal;
+          displayRef.current = cur;
+          setDisplayDeg(cur);
+        }
+        return;
+      }
+      cur += delta * NEEDLE_BLEND;
+      displayRef.current = cur;
+      setDisplayDeg(cur);
+      raf = requestAnimationFrame(step);
+    };
+
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [targetDeg]);
+
+  return displayDeg;
+}
+
+/**
+ * Needle for 0–maxKph over the arc startAngle → endAngle (matches RadialBarChart).
+ */
+function SpeedometerNeedle({
+  speedKph,
+  maxKph,
+}: {
+  speedKph: number;
+  maxKph: number;
+}) {
+  const targetDeg = needleAngleFromSpeed(speedKph, maxKph);
+  const angleDeg = useSmoothedNeedleAngle(targetDeg);
+  const gradId = useId().replace(/:/g, "");
+
+  const cx = 100;
+  const cy = 100;
+
+  const inner = polarToCartesian(cx, cy, 30, angleDeg);
+  const tip = polarToCartesian(cx, cy, 70, angleDeg);
+
+  return (
+    <svg
+      className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+      viewBox="0 0 200 200"
+      preserveAspectRatio="xMidYMid meet"
+      aria-hidden
+    >
+      <defs>
+        <linearGradient
+          id={gradId}
+          gradientUnits="userSpaceOnUse"
+          x1={inner.x}
+          y1={inner.y}
+          x2={tip.x}
+          y2={tip.y}
+        >
+          <stop offset="0%" stopColor="transparent" />
+          <stop offset="20%" stopColor="transparent" />
+          <stop offset="100%" stopColor="black" />
+        </linearGradient>
+      </defs>
+
+      <line
+        x1={inner.x}
+        y1={inner.y}
+        x2={tip.x}
+        y2={tip.y}
+        stroke={`url(#${gradId})`}
+        strokeWidth={3.5}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
 }

@@ -23,8 +23,10 @@ export type TelemetryEventCurrent = {
   catenary_voltage_kv?: number;
   traction_current_a?: number;
   traction_power_kw?: number;
+  traction_type?:string;
   regen_power_kw?: number;
   transformer_temp_c?: number;
+  energy_consumption_kwh?:number;
   converter_temp_c?: number;
   traction_motor_temp_c?: number;
   axle_bearing_temp_c?: number;
