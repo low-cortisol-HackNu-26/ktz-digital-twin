@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .packets import DEFAULT_INITIAL_STATE, build_packet
+from .random_warnings import RandomWarningsEngine
 from .route_follower import RouteFollower
 from .scenarios.anomaly import apply_fault
 from .scenarios.normal import update_physics
@@ -121,6 +122,11 @@ class StateMachine:
 		self._current_station_name: str = ""
 		# Locked-in target station km once we start braking for it
 		self._target_station_km: float | None = None
+		self._fixed_fault_scenarios = {
+			"overspeed", "brake_pressure_drop", "motor_overheat",
+			"catenary_voltage_sag", "gearbox_vibration_high",
+		}
+		self._random_warnings = RandomWarningsEngine(locomotive_id=locomotive_id, hz=self.hz)
 
 		# Prime GPS
 		self.state["gps_lat"] = self._follower.lat
@@ -133,13 +139,12 @@ class StateMachine:
 		self.tick += 1
 
 		target_speed = self._journey_target_speed()
+		# Keep line limit aligned with driving mode; random overspeed warnings can still undercut this.
+		self.state["allowed_speed_kph"] = max(35.0, min(120.0, target_speed + 5.0))
 
 		self.state = update_physics(self.state, target_speed, self.hz)
 
-		if self.scenario in {
-			"overspeed", "brake_pressure_drop", "motor_overheat",
-			"catenary_voltage_sag", "gearbox_vibration_high",
-		}:
+		if self.scenario in self._fixed_fault_scenarios:
 			self.state = apply_fault(self.state, self.scenario)
 
 		# Advance GPS only while moving
@@ -151,6 +156,13 @@ class StateMachine:
 		self.state["gps_lat"] = self._follower.lat
 		self.state["gps_lon"] = self._follower.lng
 		self.state["route_segment"] = self._follower.segment_label
+
+		if self.scenario not in self._fixed_fault_scenarios:
+			self.state = self._random_warnings.apply(
+				self.state,
+				cruising=self._journey == _State.RUNNING and float(self.state["speed_kph"]) > 35.0,
+				base_route_segment=self._follower.segment_label,
+			)
 
 		return build_packet(self.locomotive_id, self.state)
 
