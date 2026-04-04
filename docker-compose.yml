@@ -1,0 +1,19 @@
+# Docker Compose orchestration for all 6 services (Keycloak removed):
+#
+# Services to define:
+#   - frontend:    Next.js 15, build from ./frontend, port 3000
+#   - backend:     FastAPI, build from ./backend, port 8000, depends on postgres + redis
+#   - simulator:   Python asyncio simulator, build from ./simulator, connects to backend WS
+#   - postgres:    timescale/timescaledb:latest-pg16, port 5432, volume for data persistence
+#                  init scripts: infra/postgres/init.sql + infra/postgres/seed_cards.sql
+#   - redis:       redis:7-alpine, port 6379, uses ./infra/redis/redis.conf
+#   - nginx:       nginx:alpine, ports 80/443, reverse proxy to frontend + backend + WS upgrade
+#
+# Networks:
+#   - internal: backend ↔ postgres, redis (not exposed to host)
+#   - public:   nginx ↔ frontend, backend
+#
+# Volumes:
+#   - pg_data, redis_data
+#
+# All secrets loaded from .env (see .env.example)

@@ -1,0 +1,7 @@
+# Python dependencies for the simulator.
+#
+# websockets     — asyncio WebSocket client, connects to backend /ws/ingest
+# pydantic       — packet schema validation (reuse shared types)
+# numpy          — noise generation, realistic sensor drift
+# python-dotenv  — read .env for SIMULATOR_TARGET_WS etc.
+# httpx          — initial REST call to register locomotive ID with backend

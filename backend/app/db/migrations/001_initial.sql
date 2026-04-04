@@ -1,0 +1,33 @@
+-- Initial database schema migration.
+--
+-- Steps to include:
+--
+-- 1. Enable TimescaleDB extension:
+--    CREATE EXTENSION IF NOT EXISTS timescaledb;
+--
+-- 2. Create telemetry table (columns from models/telemetry.py)
+--
+-- 3. Convert to hypertable:
+--    SELECT create_hypertable('telemetry', 'timestamp');
+--
+-- 4. Set data retention policy (72 hours):
+--    SELECT add_retention_policy('telemetry', INTERVAL '72 hours');
+--
+-- 5. Create alerts table (columns from models/alert.py)
+--
+-- 6. Create cards table (columns from models/card.py):
+--    id UUID PRIMARY KEY, uid_hash VARCHAR(64) UNIQUE NOT NULL,
+--    operator_name VARCHAR(256), role VARCHAR(32),
+--    assigned_locomotive_id VARCHAR(64), is_active BOOLEAN DEFAULT TRUE,
+--    created_at TIMESTAMPTZ, last_used_at TIMESTAMPTZ
+--
+-- 7. Create indexes:
+--    CREATE INDEX ON telemetry (locomotive_id, timestamp DESC);
+--    CREATE INDEX ON alerts (locomotive_id, fired_at DESC);
+--    CREATE INDEX ON alerts (locomotive_id, code) WHERE resolved_at IS NULL;
+--    CREATE UNIQUE INDEX ON cards (uid_hash);
+--
+-- 8. Create locomotives lookup table:
+--    id VARCHAR(64) PRIMARY KEY, name TEXT, created_at TIMESTAMPTZ
+--
+-- After migration, run infra/postgres/seed_cards.sql to insert demo operator cards.

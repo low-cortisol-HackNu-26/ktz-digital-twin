@@ -1,0 +1,22 @@
+{
+  "_comment": "Sample telemetry data file — used for offline testing and as replay seed.",
+  "_format": "Array of TelemetryPacket objects (matches shared/types/telemetry.ts)",
+  "_fields_per_packet": {
+    "locomotiveId": "string e.g. LOC-001",
+    "timestamp": "Unix ms integer",
+    "speed": "km/h float",
+    "throttle": "0–100 float",
+    "fuelLevel": "liters float",
+    "fuelConsumptionRate": "L/h float",
+    "engineTemp": "°C float",
+    "oilPressure": "bar float",
+    "brakePressure": "bar float",
+    "voltage": "V float",
+    "current": "A float",
+    "latitude": "decimal degrees float",
+    "longitude": "decimal degrees float",
+    "alerts": "array of AlertCode strings"
+  },
+  "_note": "Populate with ~300 realistic samples covering normal, warning, and anomaly periods.",
+  "packets": []
+}

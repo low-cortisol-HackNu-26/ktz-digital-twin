@@ -1,0 +1,10 @@
+# Development overrides for docker-compose.yml:
+#
+# - Mount source directories as volumes for hot-reload:
+#     frontend/ → /app, backend/ → /app, simulator/ → /app
+# - Override backend CMD to: uvicorn app.main:app --reload
+# - Override frontend CMD to: next dev
+# - Expose postgres port 5432 to host for direct DB access
+# - Expose redis port 6379 to host for debugging
+# - Set LOG_LEVEL=debug on backend
+# - Disable nginx SSL in dev (plain HTTP)

@@ -1,0 +1,36 @@
+{
+  "_comment": "Next.js 15 app. Key dependencies to list:",
+  "_dependencies": {
+    "next": "15.x",
+    "react": "19.x",
+    "react-dom": "19.x",
+    "zustand": "fleet + alert state store",
+    "@tanstack/react-query": "REST history + export fetching",
+    "recharts": "live scrolling charts, zoom, tooltips",
+    "react-leaflet": "route map",
+    "leaflet": "peer dep of react-leaflet",
+    "@turf/turf": "proximity distance calculations between trains on route",
+    "tailwindcss": "styling",
+    "@shadcn/ui": "accessible component library",
+    "axios": "REST client (attaches Bearer token from cardAuth)",
+    "date-fns": "timestamp formatting",
+    "jspdf": "client-side PDF export fallback",
+    "lucide-react": "icon set"
+  },
+  "_devDependencies": {
+    "typescript": "5.x",
+    "@types/react": "",
+    "@types/node": "",
+    "@types/leaflet": "",
+    "@turf/turf": "types included in package",
+    "eslint": "",
+    "prettier": ""
+  },
+  "_scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  }
+}

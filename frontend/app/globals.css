@@ -1,0 +1,27 @@
+/* Global styles.
+ *
+ * Contents:
+ *   @tailwind base / components / utilities
+ *
+ *   CSS custom properties (dark theme only — HMI is always dark):
+ *     --background, --foreground, --card, --border, --radius
+ *     --health-normal, --health-warning, --health-critical
+ *
+ *   .cabin-grid: FIXED CSS Grid — no responsive breakpoints.
+ *     Fixed pixel dimensions sized for 1920×1080 HMI panels.
+ *     Grid areas: health-widget | speed | alerts
+ *                 fuel | pressure | electrics
+ *                 trends (span 2) | map
+ *
+ *   .cabin-panel: fixed-size card wrapper (border, bg, padding)
+ *
+ *   .numeric-readout: large monospace font for speed/fuel numbers
+ *
+ *   .card-login-overlay: full-screen centered card tap prompt
+ *
+ *   Scrollbar styling for dark panels
+ *
+ *   @keyframes: critical-blink (alert pulse), gauge-sweep (needle init animation)
+ *
+ *   DO NOT add @media breakpoints — layout is fixed, not responsive.
+ */

@@ -1,0 +1,33 @@
+# Python dependencies for the FastAPI backend.
+#
+# Core:
+#   fastapi
+#   uvicorn[standard]
+#   pydantic[email] (v2)
+#   pydantic-settings
+#
+# Database:
+#   sqlalchemy[asyncio]
+#   asyncpg                  (async PostgreSQL driver)
+#   alembic                  (migrations)
+#
+# Redis / Celery:
+#   redis[hiredis]
+#   celery[redis]
+#
+# Auth:
+#   python-jose[cryptography]  (HS256 JWT issuance + verification; no Keycloak)
+#   passlib[bcrypt]            (not needed for card auth but useful for Admin seed)
+#
+# Export:
+#   reportlab or weasyprint   (PDF generation)
+#   pandas                    (CSV generation)
+#
+# Telemetry processing:
+#   numpy                     (EMA smoothing, statistics)
+#
+# Testing:
+#   pytest
+#   pytest-asyncio
+#   httpx                     (TestClient)
+#   factory-boy               (fixtures)

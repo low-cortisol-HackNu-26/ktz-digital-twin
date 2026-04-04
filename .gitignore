@@ -1,0 +1,11 @@
+# What to ignore:
+#
+# .env                          (secrets — never commit)
+# infra/nginx/ssl/              (TLS certificates)
+# __pycache__/, *.pyc, .mypy_cache/, .pytest_cache/
+# .venv/, node_modules/
+# frontend/.next/, frontend/out/
+# *.egg-info/, dist/, build/
+# *.log
+# .DS_Store, Thumbs.db
+# exports/*.pdf, exports/*.csv  (generated report files)

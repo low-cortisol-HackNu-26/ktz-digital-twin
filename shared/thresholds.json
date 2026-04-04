@@ -1,0 +1,26 @@
+{
+  "_comment": "Health Index configuration — edit without recompile. Loaded by backend on startup.",
+  "_structure": {
+    "parameters": {
+      "<paramName>": {
+        "weight": "number 0–1, sum of all weights must equal 1",
+        "normal": { "min": "number", "max": "number" },
+        "warning": { "min": "number", "max": "number" },
+        "critical": { "min": "number", "max": "number" },
+        "penaltyPerAlert": "number subtracted from score per active alert of this type"
+      }
+    },
+    "gradeThresholds": {
+      "A": ">=90",
+      "B": ">=75",
+      "C": ">=55",
+      "D": ">=35",
+      "E": "<35"
+    },
+    "categoryThresholds": {
+      "NORMAL": ">=75",
+      "WARNING": ">=45",
+      "CRITICAL": "<45"
+    }
+  }
+}

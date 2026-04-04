@@ -1,0 +1,13 @@
+-- PostgreSQL initialization script — runs once when the container first starts.
+--
+-- Steps:
+--   1. CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+--   2. CREATE DATABASE locomotive_twin (if not using POSTGRES_DB env);
+--   3. Create the app user with limited privileges (not superuser)
+--      GRANT CONNECT, CREATE ON DATABASE locomotive_twin TO appuser;
+--
+-- Note: The actual table DDL is in backend/app/db/migrations/001_initial.sql
+--       which runs via alembic on backend startup.
+--
+-- This file only handles extension and permission bootstrapping
+-- because TimescaleDB extension requires superuser to install.
