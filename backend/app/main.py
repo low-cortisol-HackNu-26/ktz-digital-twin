@@ -10,16 +10,31 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.cors import CORSMiddleware
 
 from .api.routes.auth import router as auth_router
+from .api.routes.health import router as health_router
 from .api.routes.map import router as map_router
+from .api.routes.telemetry import router as telemetry_router
 from .config import settings
+from .core.runtime_state import shutdown_runtime, startup_runtime
 from .db.session import Base, engine
-from .models import AuthSession, DriverAccount, LocomotivePosition, Route  # noqa: F401
+from .models import (  # noqa: F401
+    AuthSession,
+    CurrentSnapshot,
+    DriverAccount,
+    IngestionStat,
+    Locomotive,
+    LocomotivePosition,
+    Route,
+    TelemetryEventRecord,
+)
+from .ws.handler import router as ws_router
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    await startup_runtime()
+
     try:
         db_url = make_url(settings.DATABASE_URL)
         logger.info(
@@ -44,6 +59,7 @@ async def lifespan(_app: FastAPI):
 
     yield
 
+    await shutdown_runtime()
     await engine.dispose()
 
 
@@ -66,8 +82,6 @@ app.add_middleware(
 
 app.include_router(auth_router, prefix="/api")
 app.include_router(map_router, prefix="/api")
-
-
-@app.get("/health", tags=["system"])
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+app.include_router(telemetry_router, prefix="/api")
+app.include_router(health_router)
+app.include_router(ws_router)

@@ -1,23 +1,47 @@
-# WebSocket connection manager — fan-out to all connected clients for a locomotive.
-#
-# class WebSocketManager:
-#   _connections: dict[str, set[WebSocket]]
-#     key = locomotiveId; value = set of active WebSocket connections
-#
-#   async connect(locomotiveId: str, ws: WebSocket) -> None
-#     Accept ws, add to _connections[locomotiveId]
-#     Enforce WS_MAX_CLIENTS_PER_LOCO limit; close oldest if exceeded
-#
-#   async disconnect(locomotiveId: str, ws: WebSocket) -> None
-#     Remove from set; clean up empty key
-#
-#   async broadcast(locomotiveId: str, data: dict) -> None
-#     JSON-encode data, send_text to all connections for that locomotive
-#     Remove disconnected clients (handle WebSocketDisconnect silently)
-#
-#   async broadcast_all(data: dict) -> None
-#     Broadcast to every connected client (used for system-wide alerts)
-#
-# The manager subscribes to Redis pub/sub channel "telemetry:{locomotiveId}"
-# and calls broadcast() on each received message.
-# This decouples ingestion from fan-out and supports multiple backend workers.
+from __future__ import annotations
+
+import json
+from collections import defaultdict
+from typing import Any
+
+from fastapi import WebSocket
+
+
+class WebSocketManager:
+	def __init__(self) -> None:
+		self._connections: dict[str, set[WebSocket]] = defaultdict(set)
+
+	@property
+	def client_count(self) -> int:
+		return sum(len(bucket) for bucket in self._connections.values())
+
+	async def connect(self, locomotive_id: str, websocket: WebSocket) -> None:
+		await websocket.accept()
+		self._connections[locomotive_id].add(websocket)
+
+	async def disconnect(self, locomotive_id: str, websocket: WebSocket) -> None:
+		bucket = self._connections.get(locomotive_id)
+		if bucket is None:
+			return
+		bucket.discard(websocket)
+		if not bucket:
+			self._connections.pop(locomotive_id, None)
+
+	async def broadcast(self, event: dict[str, Any]) -> None:
+		locomotive_id = event.get("locomotive_id")
+		if not isinstance(locomotive_id, str):
+			return
+
+		bucket = list(self._connections.get(locomotive_id, set()))
+		if not bucket:
+			return
+
+		message = json.dumps(event, ensure_ascii=True)
+		for ws in bucket:
+			try:
+				await ws.send_text(message)
+			except Exception:
+				await self.disconnect(locomotive_id, ws)
+
+
+manager = WebSocketManager()

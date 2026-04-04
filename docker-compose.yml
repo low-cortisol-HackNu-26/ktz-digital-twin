@@ -24,8 +24,10 @@ services:
     build: ./simulator
     depends_on: [backend]
     environment:
-      - WS_TARGET=ws://backend:8000/ws/ingest
-      - LOCOS=LK-41,LK-42,LK-43
+      - INGEST_URL=http://backend:8000/api/ingest/telemetry
+      - LOCOS=KZ8A-0001,KZ8A-0002,KZ8A-0003
+      - HZ=5
+      - SCENARIO=normal
 
   postgres:
     image: timescale/timescaledb:latest-pg16
@@ -44,6 +46,7 @@ services:
 
   celery-worker:
     build: ./backend
+    profiles: ["workers"]
     command: celery -A app.workers worker --loglevel=info
     depends_on: [redis, postgres]
 
