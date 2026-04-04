@@ -1,15 +1,46 @@
-# Packet builder helpers for the simulator.
-#
-# build_packet(locomotive_id: str, state: dict) -> dict
-#   Constructs a dict matching TelemetryPacket shape (shared/types/telemetry.ts)
-#   Fills timestamp with current Unix ms
-#   Maps internal state field names to protocol field names
-#   Returns raw dict (serialized to JSON by main loop)
-#
-# FIELD_NOISE: dict[str, float]
-#   Per-field standard deviation for Gaussian noise injection
-#   e.g. speed: 0.5, engineTemp: 0.3, voltage: 2.0
-#
-# DEFAULT_INITIAL_STATE: dict
-#   Starting values for a stationary locomotive:
-#   speed=0, throttle=0, fuelLevel=2000, engineTemp=20, ...
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+DEFAULT_INITIAL_STATE: dict[str, Any] = {
+	"speed_kph": 0.0,
+	"target_speed_kph": 0.0,
+	"allowed_speed_kph": 80.0,
+	"acceleration": 0.0,
+	"traction_mode": "coast",
+	"tractive_effort_kn": 0.0,
+	"brake_pipe_pressure_bar": 5.0,
+	"brake_cylinder_pressure_bar": 0.0,
+	"pantograph_up": True,
+	"catenary_voltage_kv": 25.0,
+	"traction_current_a": 0.0,
+	"traction_power_kw": 0.0,
+	"regen_power_kw": 0.0,
+	"transformer_temp_c": 42.0,
+	"converter_temp_c": 39.0,
+	"traction_motor_temp_c": 45.0,
+	"axle_bearing_temp_c": 36.0,
+	"compressor_state": "off",
+	"compressor_cycles_per_hour": 9.0,
+	"pneumatic_pressure_bar": 7.5,
+	"vibration_motor": 0.7,
+	"vibration_gearbox": 0.6,
+	"gps_lat": 43.2389,
+	"gps_lon": 76.8897,
+	"route_segment": "ALA-NUR:000",
+	"gradient_permille": 0.0,
+	"train_mass_tons": 6_500.0,
+	"active_fault_codes": [],
+	"signal_quality": 0.98,
+	"data_quality": 0.99,
+	"source": "simulator",
+	"schema_version": "1.0",
+}
+
+
+def build_packet(locomotive_id: str, state: dict[str, Any]) -> dict[str, Any]:
+	payload = dict(state)
+	payload["timestamp"] = datetime.now(timezone.utc).isoformat()
+	payload["locomotive_id"] = locomotive_id
+	return payload

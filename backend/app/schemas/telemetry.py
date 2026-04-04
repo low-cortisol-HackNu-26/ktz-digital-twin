@@ -1,22 +1,133 @@
-# Pydantic v2 schemas for API serialization of telemetry data.
-# (Separate from ORM models — thin conversion layer.)
-#
-# class TelemetryPacketSchema(BaseModel):
-#   All fields matching TelemetryRecord columns, camelCase aliases for frontend JSON
-#   model_config: populate_by_name=True, from_attributes=True
-#
-# class HealthIndexSchema(BaseModel):
-#   score: float (0–100)
-#   grade: Literal["A","B","C","D","E"]
-#   category: Literal["NORMAL","WARNING","CRITICAL"]
-#   factors: list[HealthFactorSchema]
-#   timestamp: datetime
-#
-# class HealthFactorSchema(BaseModel):
-#   parameter: str
-#   value: float
-#   contribution: float
-#   label: str
-#
-# class TelemetryPacketWithHealthSchema(TelemetryPacketSchema):
-#   healthIndex: HealthIndexSchema  ← combined response for WS and /latest endpoint
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+def _utcnow() -> datetime:
+	return datetime.now(timezone.utc)
+
+
+class TelemetryEvent(BaseModel):
+	model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+	timestamp: datetime
+	locomotive_id: str = Field(..., min_length=1, max_length=64)
+	speed_kph: float = Field(..., ge=0)
+	target_speed_kph: float | None = Field(default=None, ge=0)
+	allowed_speed_kph: float | None = Field(default=None, ge=0)
+	acceleration: float | None = None
+	traction_mode: Literal["traction", "coast", "braking", "regen"]
+	tractive_effort_kn: float | None = None
+	brake_pipe_pressure_bar: float | None = None
+	brake_cylinder_pressure_bar: float | None = None
+	pantograph_up: bool
+	catenary_voltage_kv: float | None = None
+	traction_current_a: float | None = None
+	traction_power_kw: float | None = None
+	regen_power_kw: float | None = None
+	transformer_temp_c: float | None = None
+	converter_temp_c: float | None = None
+	traction_motor_temp_c: float | None = None
+	axle_bearing_temp_c: float | None = None
+	compressor_state: Literal["on", "off"] | None = None
+	compressor_cycles_per_hour: float | None = Field(default=None, ge=0)
+	pneumatic_pressure_bar: float | None = None
+	vibration_motor: float | None = Field(default=None, ge=0)
+	vibration_gearbox: float | None = Field(default=None, ge=0)
+	gps_lat: float | None = None
+	gps_lon: float | None = None
+	route_segment: str | None = Field(default=None, max_length=128)
+	gradient_permille: float | None = None
+	train_mass_tons: float | None = Field(default=None, ge=0)
+	active_fault_codes: list[str] = Field(default_factory=list)
+	signal_quality: float | None = Field(default=None, ge=0, le=1)
+	data_quality: float | None = Field(default=None, ge=0, le=1)
+	ingestion_time: datetime | None = None
+	source: str | None = Field(default=None, max_length=64)
+	schema_version: str = Field(default="1.0", min_length=1, max_length=32)
+
+	@field_validator("brake_pipe_pressure_bar", "brake_cylinder_pressure_bar", "pneumatic_pressure_bar")
+	@classmethod
+	def validate_pressure_ranges(cls, value: float | None) -> float | None:
+		if value is None:
+			return value
+		if not 0 <= value <= 16:
+			raise ValueError("pressure must be in range 0..16 bar")
+		return value
+
+	@field_validator(
+		"transformer_temp_c",
+		"converter_temp_c",
+		"traction_motor_temp_c",
+		"axle_bearing_temp_c",
+	)
+	@classmethod
+	def validate_temperature_ranges(cls, value: float | None) -> float | None:
+		if value is None:
+			return value
+		if not -60 <= value <= 220:
+			raise ValueError("temperature must be in range -60..220 C")
+		return value
+
+	@field_validator("catenary_voltage_kv")
+	@classmethod
+	def validate_voltage_range(cls, value: float | None) -> float | None:
+		if value is None:
+			return value
+		if not 0 <= value <= 35:
+			raise ValueError("catenary voltage must be in range 0..35 kV")
+		return value
+
+	@model_validator(mode="after")
+	def validate_gps_pair(self) -> "TelemetryEvent":
+		if (self.gps_lat is None) != (self.gps_lon is None):
+			raise ValueError("gps_lat and gps_lon must be provided together")
+		if self.gps_lat is not None and not -90 <= self.gps_lat <= 90:
+			raise ValueError("gps_lat must be in range -90..90")
+		if self.gps_lon is not None and not -180 <= self.gps_lon <= 180:
+			raise ValueError("gps_lon must be in range -180..180")
+		return self
+
+
+class TelemetryIngestRequest(BaseModel):
+	events: list[TelemetryEvent] = Field(default_factory=list)
+
+
+class InvalidEvent(BaseModel):
+	index: int
+	error: str
+
+
+class TelemetryIngestResponse(BaseModel):
+	accepted: int
+	rejected: int
+	invalid_items: list[InvalidEvent]
+
+
+class LocomotiveCurrentResponse(BaseModel):
+	locomotive_id: str
+	event: TelemetryEvent | None
+
+
+class SystemMetricsResponse(BaseModel):
+	ingest_rate_per_sec: int
+	valid_events_count: int
+	invalid_events_count: int
+	dropped_events_count: int
+	db_write_latency_ms: float
+	redis_publish_latency_ms: float
+	ws_clients_count: int
+	last_event_timestamp: str | None
+	per_locomotive_last_seen: dict[str, str]
+
+
+class IngestionStatsResponse(BaseModel):
+	locomotive_id: str
+	total_events: int
+	valid_events: int
+	invalid_events: int
+	last_ingest_time: datetime
+
