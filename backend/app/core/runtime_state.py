@@ -28,6 +28,9 @@ class ServiceMetrics:
         self.redis_publish_latency_ms = 0.0
         self.last_event_timestamp: str | None = None
         self.per_locomotive_last_seen: dict[str, str] = {}
+        self.current_load_mode: str = "normal"
+        self.burst_active: bool = False
+        self.burst_multiplier: int = 1
         self._ingest_events_window: deque[float] = deque(maxlen=2_000)
 
     def record_ingested(self, *, valid: int = 0, invalid: int = 0, dropped: int = 0) -> None:
@@ -49,6 +52,14 @@ class ServiceMetrics:
         self.last_event_timestamp = ts
         self.per_locomotive_last_seen[locomotive_id] = ts
 
+    def record_load_mode(self, *, load_mode: str | None, burst_active: bool | None, burst_multiplier: int | None) -> None:
+        if load_mode in {"normal", "highload_x10"}:
+            self.current_load_mode = load_mode
+        if burst_active is not None:
+            self.burst_active = bool(burst_active)
+        if burst_multiplier is not None:
+            self.burst_multiplier = max(1, int(burst_multiplier))
+
     def snapshot(self) -> dict[str, Any]:
         now = time.monotonic()
         while self._ingest_events_window and now - self._ingest_events_window[0] > 1.0:
@@ -63,6 +74,9 @@ class ServiceMetrics:
             "ws_clients_count": manager.client_count,
             "last_event_timestamp": self.last_event_timestamp,
             "per_locomotive_last_seen": self.per_locomotive_last_seen,
+            "current_load_mode": self.current_load_mode,
+            "burst_active": self.burst_active,
+            "burst_multiplier": self.burst_multiplier,
         }
 
 

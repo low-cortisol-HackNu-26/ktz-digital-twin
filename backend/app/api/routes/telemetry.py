@@ -736,6 +736,9 @@ async def ingest_telemetry(
 				"pressure_bar",
 				"voltage_kv",
 				"current_a",
+				"load_mode",
+				"burst_active",
+				"burst_multiplier",
 				"route_progress_percent",
 				"distance_to_destination_km",
 				"eta_seconds",
@@ -834,6 +837,11 @@ async def ingest_telemetry(
 			snapshot.payload = snapshot_payload
 
 		metrics.record_event_seen(event.locomotive_id, event.timestamp)
+		metrics.record_load_mode(
+			load_mode=event.load_mode,
+			burst_active=event.burst_active,
+			burst_multiplier=event.burst_multiplier,
+		)
 		await publish_event(snapshot_payload)
 
 	for item in invalid_items:

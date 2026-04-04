@@ -62,6 +62,9 @@ class TelemetryEvent(BaseModel):
 	active_fault_codes: list[str] = Field(default_factory=list)
 	signal_quality: float | None = Field(default=None, ge=0, le=1)
 	data_quality: float | None = Field(default=None, ge=0, le=1)
+	load_mode: Literal["normal", "highload_x10"] | None = None
+	burst_active: bool | None = None
+	burst_multiplier: int | None = Field(default=None, ge=1)
 	ingestion_time: datetime | None = None
 	source: str | None = Field(default=None, max_length=64)
 	schema_version: str = Field(default="1.0", min_length=1, max_length=32)
@@ -218,6 +221,9 @@ class SystemMetricsResponse(BaseModel):
 	ws_clients_count: int
 	last_event_timestamp: str | None
 	per_locomotive_last_seen: dict[str, str]
+	current_load_mode: Literal["normal", "highload_x10"] = "normal"
+	burst_active: bool = False
+	burst_multiplier: int = 1
 
 
 class IngestionStatsResponse(BaseModel):
