@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from .packets import DEFAULT_INITIAL_STATE, build_packet
+from .random_warnings import RandomWarningsEngine
+from .route_context import context_for_segment
 from .route_follower import RouteFollower
 from .scenarios.anomaly import apply_fault
 from .scenarios.normal import update_physics
@@ -121,6 +123,11 @@ class StateMachine:
 		self._current_station_name: str = ""
 		# Locked-in target station km once we start braking for it
 		self._target_station_km: float | None = None
+		self._fixed_fault_scenarios = {
+			"overspeed", "brake_pressure_drop", "motor_overheat",
+			"catenary_voltage_sag", "gearbox_vibration_high",
+		}
+		self._random_warnings = RandomWarningsEngine(locomotive_id=locomotive_id, hz=self.hz)
 
 		# Prime GPS
 		self.state["gps_lat"] = self._follower.lat
@@ -132,14 +139,15 @@ class StateMachine:
 	def next_packet(self) -> dict[str, Any]:
 		self.tick += 1
 
+		self._apply_route_context()
 		target_speed = self._journey_target_speed()
+		allowed_speed = float(self.state.get("allowed_speed_kph", target_speed))
+		target_speed = min(target_speed, allowed_speed)
 
 		self.state = update_physics(self.state, target_speed, self.hz)
+		self._apply_environmental_effects()
 
-		if self.scenario in {
-			"overspeed", "brake_pressure_drop", "motor_overheat",
-			"catenary_voltage_sag", "gearbox_vibration_high",
-		}:
+		if self.scenario in self._fixed_fault_scenarios:
 			self.state = apply_fault(self.state, self.scenario)
 
 		# Advance GPS only while moving
@@ -151,8 +159,58 @@ class StateMachine:
 		self.state["gps_lat"] = self._follower.lat
 		self.state["gps_lon"] = self._follower.lng
 		self.state["route_segment"] = self._follower.segment_label
+		self._apply_route_context()
+
+		if self.scenario not in self._fixed_fault_scenarios:
+			self.state = self._random_warnings.apply(
+				self.state,
+				cruising=self._journey == _State.RUNNING and float(self.state["speed_kph"]) > 35.0,
+				base_route_segment=self._follower.segment_label,
+			)
 
 		return build_packet(self.locomotive_id, self.state)
+
+	def _apply_route_context(self) -> None:
+		segment_label = self._follower.segment_label
+		segment_index = self._segment_index_from_label(segment_label)
+		distance_to_station_km = self._follower.distance_to_next_station_km()
+		context = context_for_segment(segment_index, distance_to_station_km)
+		self.state["route_segment"] = segment_label
+		self.state["allowed_speed_kph"] = context.allowed_speed_kph
+		self.state["track_condition"] = context.track_condition
+		self.state["weather_condition"] = context.weather_condition
+
+	def _apply_environmental_effects(self) -> None:
+		track = str(self.state.get("track_condition") or "normal")
+		weather = str(self.state.get("weather_condition") or "clear")
+		faults = {str(code).lower() for code in self.state.get("active_fault_codes", [])}
+
+		if track == "rough":
+			self.state["vibration_gearbox"] = float(self.state["vibration_gearbox"]) + 0.35
+		elif track == "bad":
+			self.state["vibration_gearbox"] = float(self.state["vibration_gearbox"]) + 0.85
+			faults.add("upcoming_bad_track")
+		elif track == "maintenance_zone":
+			self.state["vibration_gearbox"] = float(self.state["vibration_gearbox"]) + 0.55
+			faults.add("upcoming_bad_track")
+
+		if weather == "rain":
+			self.state["signal_quality"] = max(0.82, float(self.state.get("signal_quality", 0.96)) - 0.04)
+		elif weather == "snow":
+			self.state["signal_quality"] = max(0.78, float(self.state.get("signal_quality", 0.96)) - 0.07)
+		elif weather == "fog":
+			self.state["signal_quality"] = max(0.76, float(self.state.get("signal_quality", 0.96)) - 0.09)
+		elif weather == "wind":
+			self.state["signal_quality"] = max(0.86, float(self.state.get("signal_quality", 0.96)) - 0.03)
+
+		self.state["active_fault_codes"] = sorted(faults)
+
+	@staticmethod
+	def _segment_index_from_label(label: str) -> int:
+		try:
+			return int(label.rsplit(":", 1)[-1])
+		except (ValueError, IndexError):
+			return 0
 
 	# ------------------------------------------------------------------
 	# Journey FSM

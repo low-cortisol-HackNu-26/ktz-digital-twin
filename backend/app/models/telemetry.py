@@ -53,6 +53,8 @@ class TelemetryEventRecord(Base):
 	gps_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
 	gps_lon: Mapped[float | None] = mapped_column(Float, nullable=True)
 	route_segment: Mapped[str | None] = mapped_column(String(128), nullable=True)
+	track_condition: Mapped[str | None] = mapped_column(String(32), nullable=True)
+	weather_condition: Mapped[str | None] = mapped_column(String(32), nullable=True)
 	gradient_permille: Mapped[float | None] = mapped_column(Float, nullable=True)
 	train_mass_tons: Mapped[float | None] = mapped_column(Float, nullable=True)
 	active_fault_codes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)

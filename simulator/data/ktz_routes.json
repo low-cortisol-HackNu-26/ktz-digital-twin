@@ -1,7 +1,7 @@
 [
   {
     "code": "ALA-NUR",
-    "name": "Almaty â€” Nur-Sultan",
+    "name": "Almaty — Nur-Sultan",
     "total_length_km": 1295.0,
     "coordinates": [
       [
@@ -60,7 +60,7 @@
   },
   {
     "code": "ALA-SHY",
-    "name": "Almaty â€” Shymkent",
+    "name": "Almaty — Shymkent",
     "total_length_km": 705.0,
     "coordinates": [
       [
@@ -99,7 +99,7 @@
   },
   {
     "code": "NUR-AKT",
-    "name": "Nur-Sultan â€” Aktobe",
+    "name": "Nur-Sultan — Aktobe",
     "total_length_km": 1090.0,
     "coordinates": [
       [
@@ -142,7 +142,7 @@
   },
   {
     "code": "NUR-PET",
-    "name": "Nur-Sultan â€” Petropavl",
+    "name": "Nur-Sultan — Petropavl",
     "total_length_km": 280.0,
     "coordinates": [
       [
@@ -169,7 +169,7 @@
   },
   {
     "code": "SHY-KYZ",
-    "name": "Shymkent â€” Kyzylorda",
+    "name": "Shymkent — Kyzylorda",
     "total_length_km": 605.0,
     "coordinates": [
       [

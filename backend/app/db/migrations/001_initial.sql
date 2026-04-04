@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS telemetry_events (
 	gps_lat DOUBLE PRECISION,
 	gps_lon DOUBLE PRECISION,
 	route_segment VARCHAR(128),
+	track_condition VARCHAR(32),
+	weather_condition VARCHAR(32),
 	gradient_permille DOUBLE PRECISION,
 	train_mass_tons DOUBLE PRECISION,
 	active_fault_codes JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -74,3 +76,6 @@ EXCEPTION
 		NULL;
 END
 $$;
+
+ALTER TABLE telemetry_events ADD COLUMN IF NOT EXISTS track_condition VARCHAR(32);
+ALTER TABLE telemetry_events ADD COLUMN IF NOT EXISTS weather_condition VARCHAR(32);

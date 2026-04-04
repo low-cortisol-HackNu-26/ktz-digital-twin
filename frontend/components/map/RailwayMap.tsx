@@ -15,10 +15,8 @@ import {
   positionAlongRoute,
   useMockDashboardStore,
 } from "@/store/mockDashboardStore";
+import { DEFAULT_TELEMETRY_LOCOMOTIVE_ID } from "@/lib/telemetryApi";
 import { formatSpeed } from "@/lib/utils";
-
-/** Simulator + telemetry /current default (override with NEXT_PUBLIC_MAP_LOCOMOTIVE_ID). */
-const DEFAULT_TELEMETRY_LOCO = "KZ8A-0001";
 
 function Recenter({ position }: { position: [number, number] }) {
   const map = useMap();
@@ -33,7 +31,8 @@ export default function RailwayMap() {
   const packet = useMockDashboardStore((s) => s.packet);
   const mockPos = useMemo(() => positionAlongRoute(progress), [progress]);
   const locoId =
-    process.env.NEXT_PUBLIC_MAP_LOCOMOTIVE_ID?.trim() || DEFAULT_TELEMETRY_LOCO;
+    process.env.NEXT_PUBLIC_MAP_LOCOMOTIVE_ID?.trim() ||
+    DEFAULT_TELEMETRY_LOCOMOTIVE_ID;
   const live = useRailwayMapLive(locoId);
   const linePositions = live.routeLine ?? ROUTE_LINE;
   const pos = live.marker ?? mockPos;
@@ -57,7 +56,7 @@ export default function RailwayMap() {
       <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-cabin-border pointer-events-none">
         <MapContainer
           center={center}
-          zoom={11}
+          zoom={100}
           className="z-0 h-full w-full"
           scrollWheelZoom={false}
           dragging={false}

@@ -4,14 +4,45 @@
 
 import { getApiBase } from "@/lib/authClient";
 
-/** Subset of TelemetryEvent fields used by the map. */
+/** Default locomotive for simulator + dashboard when env is unset. */
+export const DEFAULT_TELEMETRY_LOCOMOTIVE_ID = "KZ8A-0001";
+
+/** Fields from GET /api/locomotives/{id}/current `event` (simulator JSON). */
 export type TelemetryEventCurrent = {
   timestamp: string;
   locomotive_id: string;
   speed_kph: number;
+  target_speed_kph?: number;
+  allowed_speed_kph?: number;
+  acceleration?: number;
+  traction_mode?: string;
+  tractive_effort_kn?: number;
+  brake_pipe_pressure_bar?: number;
+  brake_cylinder_pressure_bar?: number;
+  pantograph_up?: boolean;
+  catenary_voltage_kv?: number;
+  traction_current_a?: number;
+  traction_power_kw?: number;
+  regen_power_kw?: number;
+  transformer_temp_c?: number;
+  converter_temp_c?: number;
+  traction_motor_temp_c?: number;
+  axle_bearing_temp_c?: number;
+  compressor_state?: string;
+  pneumatic_pressure_bar?: number;
+  vibration_motor?: number;
+  vibration_gearbox?: number;
   gps_lat: number | null;
   gps_lon: number | null;
   route_segment: string | null;
+  gradient_permille?: number;
+  train_mass_tons?: number;
+  active_fault_codes?: string[];
+  signal_quality?: number;
+  data_quality?: number;
+  ingestion_time?: string;
+  source?: string;
+  schema_version?: string;
 };
 
 export type ActiveWarningCurrent = {
