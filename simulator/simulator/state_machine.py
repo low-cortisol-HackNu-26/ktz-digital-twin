@@ -21,6 +21,7 @@ class StateMachine:
 		offset_idx = (hash_value % 9) - 4
 		self.gps_lat_offset = offset_idx * 0.00035
 		self.gps_lon_offset = offset_idx * 0.00045
+		self.timeline_offset_sec = float(hash_value % 6)
 
 	def next_packet(self) -> dict[str, Any]:
 		self.tick += 1
@@ -30,6 +31,7 @@ class StateMachine:
 			self.hz,
 			gps_lat_offset=self.gps_lat_offset,
 			gps_lon_offset=self.gps_lon_offset,
+			timeline_offset_sec=self.timeline_offset_sec,
 		)
 
 		if self.scenario in {
