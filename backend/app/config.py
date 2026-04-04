@@ -1,5 +1,10 @@
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# config.py lives at backend/app/config.py  →  project root is three levels up
+_ENV_FILE = Path(__file__).parent.parent.parent / ".env"
 
 
 class Settings(BaseSettings):
@@ -20,7 +25,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_DAYS: int = 7
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore")
+        env_file=str(_ENV_FILE), env_file_encoding="utf-8", extra="ignore")
 
 
 settings = Settings()
