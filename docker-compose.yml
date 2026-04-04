@@ -14,15 +14,22 @@ services:
   backend:
     build: ./backend
     ports: ["8000:8000"]
-    depends_on: [postgres, redis]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=${JWT_SECRET}
+      - KNOWN_LOCOMOTIVES=KZ8A-0001,KZ8A-0002,KZ8A-0003
 
   simulator:
     build: ./simulator
-    depends_on: [backend]
+    depends_on:
+      backend:
+        condition: service_started
     environment:
       - INGEST_URL=http://backend:8000/api/ingest/telemetry
       - LOCOS=KZ8A-0001,KZ8A-0002,KZ8A-0003
@@ -39,6 +46,12 @@ services:
     volumes:
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   redis:
     image: redis:7-alpine

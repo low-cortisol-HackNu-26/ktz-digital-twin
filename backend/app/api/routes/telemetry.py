@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..deps import get_db
 from ...core.route_matcher import match_position
 from ...core.runtime_state import cached_routes, metrics, publish_event
+from ...models.alert import LocomotiveWarning
 from ...models.route import LocomotivePosition
 from ...models.telemetry import CurrentSnapshot, IngestionStat, Locomotive, TelemetryEventRecord
 from ...schemas.telemetry import (
