@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import os
 from typing import Any
 from urllib.parse import urlparse
@@ -10,6 +11,9 @@ import httpx
 
 from .scenarios.highload import hz_for_scenario
 from .state_machine import StateMachine
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def _parse_locomotives(value: str) -> list[str]:
@@ -42,6 +46,7 @@ async def _run_single_loco(
 	scenario: str,
 	hz: int,
 ) -> None:
+	print(f"[{locomotive_id}] Starting, sending to {ingest_url}", flush=True)
 	machine = StateMachine(locomotive_id=locomotive_id, scenario=scenario, hz=hz)
 	sleep_time = 1.0 / max(1, hz)
 	retry_sleep = 1.0
@@ -52,7 +57,13 @@ async def _run_single_loco(
 				packet = machine.next_packet()
 				await _post_event(client, ingest_url, packet)
 				retry_sleep = 1.0
-			except Exception:
+			except httpx.ConnectError as e:
+				logger.warning("POST connection error for %s: %s", locomotive_id, e)
+				await asyncio.sleep(retry_sleep)
+				retry_sleep = min(30.0, retry_sleep * 2.0)
+				continue
+			except Exception as e:
+				logger.warning("POST failed for %s: %s", locomotive_id, e)
 				await asyncio.sleep(retry_sleep)
 				retry_sleep = min(30.0, retry_sleep * 2.0)
 				continue
@@ -73,6 +84,7 @@ async def _main() -> None:
 	if not locos:
 		locos = ["KZ8A-0001"]
 
+	print(f"Starting simulator for {len(locos)} locos on route {scenario}", flush=True)
 	hz = hz_for_scenario(args.hz, scenario)
 	tasks = [
 		_run_single_loco(args.ingest_url, loco_id, scenario, hz)

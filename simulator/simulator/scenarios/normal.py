@@ -54,7 +54,7 @@ def update_physics(state: dict[str, Any], target_speed_kph: float, hz: int) -> d
 	state["traction_motor_temp_c"] = min(120.0, 45.0 + load * 55.0)
 	state["axle_bearing_temp_c"] = min(95.0, 36.0 + new_kph / 8.0)
 
-	state["pneumatic_pressure_bar"] = 7.1 if traction_mode == "braking" else 7.7
+	state["pneumatic_pressure_bar"] = 7.1 if state["traction_mode"] == "braking" else 7.7
 	state["compressor_state"] = "on" if state["pneumatic_pressure_bar"] < 7.2 else "off"
 	state["compressor_cycles_per_hour"] = 10.0 if state["compressor_state"] == "on" else 6.0
 
@@ -64,25 +64,6 @@ def update_physics(state: dict[str, Any], target_speed_kph: float, hz: int) -> d
 	state["active_fault_codes"] = []
 	state["signal_quality"] = 0.96
 	state["data_quality"] = 0.98
-
-	if active_warning_rule == "upcoming_bad_track":
-		state["active_fault_codes"] = ["UPCOMING_BAD_TRACK"]
-	elif active_warning_rule == "high_vibration":
-		state["vibration_gearbox"] = max(float(state["vibration_gearbox"]), 3.2)
-		state["active_fault_codes"] = ["HIGH_VIBRATION"]
-	elif active_warning_rule == "overspeed":
-		state["allowed_speed_kph"] = max(20.0, state["speed_kph"] - 8.0)
-		state["active_fault_codes"] = ["OVERSPEED"]
-	elif active_warning_rule == "high_temperature":
-		state["traction_motor_temp_c"] = max(float(state["traction_motor_temp_c"]), 108.0)
-		state["active_fault_codes"] = ["HIGH_TEMPERATURE"]
-	elif active_warning_rule == "low_signal_quality":
-		state["signal_quality"] = 0.72
-		state["data_quality"] = 0.78
-		state["active_fault_codes"] = ["LOW_SIGNAL_QUALITY"]
-	elif active_warning_rule == "voltage_sag":
-		state["catenary_voltage_kv"] = 16.5
-		state["active_fault_codes"] = ["VOLTAGE_SAG"]
 
 	return state
 
