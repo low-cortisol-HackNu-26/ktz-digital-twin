@@ -60,6 +60,27 @@ async def lifespan(_app: FastAPI):
                     text("ALTER TABLE telemetry_events ADD COLUMN IF NOT EXISTS weather_condition VARCHAR(32)")
                 )
                 await conn.execute(
+                    text("ALTER TABLE telemetry_events ADD COLUMN IF NOT EXISTS fuel_level_percent DOUBLE PRECISION")
+                )
+                await conn.execute(
+                    text("ALTER TABLE telemetry_events ADD COLUMN IF NOT EXISTS brakes_temperature_c DOUBLE PRECISION")
+                )
+                await conn.execute(
+                    text("ALTER TABLE telemetry_events ADD COLUMN IF NOT EXISTS traction_type VARCHAR(16)")
+                )
+                await conn.execute(
+                    text("ALTER TABLE telemetry_events ADD COLUMN IF NOT EXISTS fuel_consumption_lph DOUBLE PRECISION")
+                )
+                await conn.execute(
+                    text("ALTER TABLE telemetry_events ADD COLUMN IF NOT EXISTS energy_consumption_kwh DOUBLE PRECISION")
+                )
+                await conn.execute(
+                    text("ALTER TABLE locomotives ADD COLUMN IF NOT EXISTS traction_type VARCHAR(16) DEFAULT 'electric'")
+                )
+                await conn.execute(
+                    text("UPDATE locomotives SET traction_type = COALESCE(NULLIF(traction_type, ''), 'electric')")
+                )
+                await conn.execute(
                     text("ALTER TABLE locomotive_warnings ADD COLUMN IF NOT EXISTS source VARCHAR(16) DEFAULT 'system'")
                 )
                 await conn.execute(

@@ -17,6 +17,7 @@ class Locomotive(Base):
 
 	id: Mapped[str] = mapped_column(String(64), primary_key=True)
 	display_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+	traction_type: Mapped[str] = mapped_column(String(16), nullable=False, default="electric")
 	created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 	updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
@@ -27,15 +28,20 @@ class TelemetryEventRecord(Base):
 	id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
 	timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
 	locomotive_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+	traction_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 	speed_kph: Mapped[float] = mapped_column(Float, nullable=False)
 	target_speed_kph: Mapped[float | None] = mapped_column(Float, nullable=True)
 	allowed_speed_kph: Mapped[float | None] = mapped_column(Float, nullable=True)
+	fuel_level_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+	fuel_consumption_lph: Mapped[float | None] = mapped_column(Float, nullable=True)
+	energy_consumption_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
 	acceleration: Mapped[float | None] = mapped_column(Float, nullable=True)
 	traction_mode: Mapped[str] = mapped_column(String(16), nullable=False)
 	tractive_effort_kn: Mapped[float | None] = mapped_column(Float, nullable=True)
 	brake_pipe_pressure_bar: Mapped[float | None] = mapped_column(Float, nullable=True)
 	brake_cylinder_pressure_bar: Mapped[float | None] = mapped_column(Float, nullable=True)
+	brakes_temperature_c: Mapped[float | None] = mapped_column(Float, nullable=True)
 	pantograph_up: Mapped[bool] = mapped_column(nullable=False)
 	catenary_voltage_kv: Mapped[float | None] = mapped_column(Float, nullable=True)
 	traction_current_a: Mapped[float | None] = mapped_column(Float, nullable=True)

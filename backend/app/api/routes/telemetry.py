@@ -37,10 +37,59 @@ def _utcnow() -> datetime:
 
 
 def _to_event_dict(event: TelemetryEvent) -> dict[str, Any]:
-	payload = event.model_dump(mode="json")
+	payload = _normalize_extended_metric_aliases(event.model_dump(mode="json"))
 	payload["timestamp"] = event.timestamp.astimezone(timezone.utc).isoformat()
 	payload["ingestion_time"] = _utcnow().isoformat()
 	return payload
+
+
+def _normalize_extended_metric_aliases(payload: dict[str, Any]) -> dict[str, Any]:
+	normalized = dict(payload)
+
+	traction_type_raw = str(normalized.get("traction_type") or "electric").strip().lower()
+	if traction_type_raw == "fuel":
+		traction_type_raw = "diesel"
+	if traction_type_raw not in {"electric", "diesel"}:
+		traction_type_raw = "electric"
+	normalized["traction_type"] = traction_type_raw
+
+	if normalized.get("traction_motor_temp_c") is None and normalized.get("engine_temperature_c") is not None:
+		normalized["traction_motor_temp_c"] = normalized["engine_temperature_c"]
+	if normalized.get("engine_temperature_c") is None and normalized.get("traction_motor_temp_c") is not None:
+		normalized["engine_temperature_c"] = normalized["traction_motor_temp_c"]
+
+	if normalized.get("brake_pipe_pressure_bar") is None and normalized.get("pressure_bar") is not None:
+		normalized["brake_pipe_pressure_bar"] = normalized["pressure_bar"]
+	if normalized.get("pressure_bar") is None and normalized.get("brake_pipe_pressure_bar") is not None:
+		normalized["pressure_bar"] = normalized["brake_pipe_pressure_bar"]
+
+	if normalized.get("catenary_voltage_kv") is None and normalized.get("voltage_kv") is not None:
+		normalized["catenary_voltage_kv"] = normalized["voltage_kv"]
+	if normalized.get("voltage_kv") is None and normalized.get("catenary_voltage_kv") is not None:
+		normalized["voltage_kv"] = normalized["catenary_voltage_kv"]
+
+	if normalized.get("traction_current_a") is None and normalized.get("current_a") is not None:
+		normalized["traction_current_a"] = normalized["current_a"]
+	if normalized.get("current_a") is None and normalized.get("traction_current_a") is not None:
+		normalized["current_a"] = normalized["traction_current_a"]
+
+	if traction_type_raw == "electric":
+		normalized["fuel_level_percent"] = None
+		normalized["fuel_consumption_lph"] = None
+	else:
+		normalized["catenary_voltage_kv"] = None
+		normalized["voltage_kv"] = None
+		normalized["traction_current_a"] = None
+		normalized["current_a"] = None
+		normalized["traction_power_kw"] = None
+		normalized["regen_power_kw"] = None
+		normalized["energy_consumption_kwh"] = None
+
+	return normalized
+
+
+def _normalize_event_for_contract(event: TelemetryEvent) -> TelemetryEvent:
+	return TelemetryEvent.model_validate(_normalize_extended_metric_aliases(event.model_dump(mode="python")))
 
 
 def _compute_derived_route_metrics(
@@ -134,6 +183,7 @@ def _derive_progress_from_route_segment(route_segment: str | None) -> tuple[str 
 
 
 def _recompute_derived_metrics_live(payload: dict[str, Any]) -> dict[str, Any]:
+	payload = _normalize_extended_metric_aliases(payload)
 	route_id = None
 	progress_pct = None
 
@@ -156,7 +206,7 @@ def _recompute_derived_metrics_live(payload: dict[str, Any]) -> dict[str, Any]:
 	)
 	updated = dict(payload)
 	updated.update(derived)
-	return updated
+	return _normalize_extended_metric_aliases(updated)
 
 
 def _warning_definition(
@@ -227,6 +277,7 @@ def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, An
 		)
 
 	max_temp = max(
+		float(event.engine_temperature_c or -999.0),
 		float(event.transformer_temp_c or -999.0),
 		float(event.converter_temp_c or -999.0),
 		float(event.traction_motor_temp_c or -999.0),
@@ -244,6 +295,25 @@ def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, An
 			title="Повышенная температура тягового двигателя",
 			message=f"Температура тягового двигателя достигла {float(event.traction_motor_temp_c or max_temp):.1f} C.",
 			recommended_action="Снизьте тяговую нагрузку",
+		)
+
+	pressure_bar = (
+		float(event.pressure_bar)
+		if event.pressure_bar is not None
+		else (float(event.brake_pipe_pressure_bar) if event.brake_pipe_pressure_bar is not None else None)
+	)
+	if pressure_bar is not None and pressure_bar < 4.0:
+		severity = "critical" if pressure_bar < 3.2 else "warning"
+		candidates["low_pressure"] = _warning_definition(
+			locomotive_id=locomotive_id,
+			rule_id="low_pressure",
+			source="system",
+			target_type="locomotive",
+			target_id=locomotive_id,
+			severity=severity,
+			title="Пониженное тормозное давление",
+			message=f"Текущее давление в тормозной магистрали составляет {pressure_bar:.2f} бар.",
+			recommended_action="Проверьте пневмосистему и уменьшите тяговую нагрузку",
 		)
 
 	min_quality = min(
@@ -276,6 +346,25 @@ def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, An
 			title="Просадка напряжения контактной сети",
 			message=f"Напряжение контактной сети составляет {event.catenary_voltage_kv:.1f} кВ.",
 			recommended_action="Учитывайте возможное снижение тяги",
+		)
+
+	current_a = (
+		float(event.current_a)
+		if event.current_a is not None
+		else (float(event.traction_current_a) if event.traction_current_a is not None else None)
+	)
+	if current_a is not None and current_a > 950.0:
+		severity = "critical" if current_a > 1200.0 else "warning"
+		candidates["high_current"] = _warning_definition(
+			locomotive_id=locomotive_id,
+			rule_id="high_current",
+			source="system",
+			target_type="locomotive",
+			target_id=locomotive_id,
+			severity=severity,
+			title="Повышенный тяговый ток",
+			message=f"Текущий тяговый ток составляет {current_a:.0f} А.",
+			recommended_action="Снизьте нагрузку и контролируйте температуру тягового оборудования",
 		)
 
 	max_vibration = max(float(event.vibration_motor or 0.0), float(event.vibration_gearbox or 0.0))
@@ -566,6 +655,7 @@ def _snapshot_from_event_row(row: TelemetryEventRecord) -> dict[str, Any]:
 			"active_fault_codes": row.active_fault_codes or [],
 		}
 	).model_dump(mode="json")
+	snapshot = _normalize_extended_metric_aliases(snapshot)
 	derived = _compute_derived_route_metrics(
 		speed_kph=float(row.speed_kph),
 		route_id=None,
@@ -579,7 +669,17 @@ def _snapshot_from_event_row(row: TelemetryEventRecord) -> dict[str, Any]:
 async def _ensure_locomotive(db: AsyncSession, locomotive_id: str) -> None:
 	row = (await db.execute(select(Locomotive).where(Locomotive.id == locomotive_id))).scalar_one_or_none()
 	if row is None:
-		db.add(Locomotive(id=locomotive_id, display_name=locomotive_id))
+		db.add(Locomotive(id=locomotive_id, display_name=locomotive_id, traction_type="electric"))
+
+
+async def _upsert_locomotive_traction_type(db: AsyncSession, *, locomotive_id: str, traction_type: str) -> None:
+	row = (await db.execute(select(Locomotive).where(Locomotive.id == locomotive_id))).scalar_one_or_none()
+	if row is None:
+		db.add(Locomotive(id=locomotive_id, display_name=locomotive_id, traction_type=traction_type))
+		return
+	if row.traction_type != traction_type:
+		row.traction_type = traction_type
+		row.updated_at = _utcnow()
 
 
 @router.post("/ingest/telemetry", response_model=TelemetryIngestResponse)
@@ -611,7 +711,13 @@ async def ingest_telemetry(
 
 	started = time.perf_counter()
 	for event in valid_events:
+		event = _normalize_event_for_contract(event)
 		await _ensure_locomotive(db, event.locomotive_id)
+		await _upsert_locomotive_traction_type(
+			db,
+			locomotive_id=event.locomotive_id,
+			traction_type=("diesel" if event.traction_type == "fuel" else event.traction_type),
+		)
 		base_allowed_speed = float(event.allowed_speed_kph) if event.allowed_speed_kph is not None else None
 		effective_allowed_speed = await _compute_effective_allowed_speed_kph(
 			db,
@@ -624,11 +730,18 @@ async def ingest_telemetry(
 		event_payload = event.model_dump(
 			exclude={
 				"ingestion_time",
+				"base_allowed_speed_kph",
+				"effective_allowed_speed_kph",
+				"engine_temperature_c",
+				"pressure_bar",
+				"voltage_kv",
+				"current_a",
 				"route_progress_percent",
 				"distance_to_destination_km",
 				"eta_seconds",
 				"eta_timestamp",
-			}
+			},
+			exclude_none=True,
 		)
 		record = TelemetryEventRecord(**event_payload, ingestion_time=_utcnow())
 		db.add(record)
@@ -808,6 +921,19 @@ async def get_latest_metrics(
 	return {
 		"locomotive_id": locomotive_id,
 		"speed_kph": payload.get("speed_kph"),
+		"traction_type": payload.get("traction_type"),
+		"fuel_level_percent": payload.get("fuel_level_percent"),
+		"fuel_consumption_lph": payload.get("fuel_consumption_lph"),
+		"energy_consumption_kwh": payload.get("energy_consumption_kwh"),
+		"catenary_voltage_kv": payload.get("catenary_voltage_kv"),
+		"traction_current_a": payload.get("traction_current_a"),
+		"traction_power_kw": payload.get("traction_power_kw"),
+		"regen_power_kw": payload.get("regen_power_kw"),
+		"engine_temperature_c": payload.get("engine_temperature_c"),
+		"brakes_temperature_c": payload.get("brakes_temperature_c"),
+		"pressure_bar": payload.get("pressure_bar"),
+		"voltage_kv": payload.get("voltage_kv"),
+		"current_a": payload.get("current_a"),
 		"allowed_speed_kph": payload.get("allowed_speed_kph"),
 		"base_allowed_speed_kph": payload.get("base_allowed_speed_kph"),
 		"effective_allowed_speed_kph": payload.get("effective_allowed_speed_kph"),

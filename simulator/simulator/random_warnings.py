@@ -156,6 +156,7 @@ class RandomWarningsEngine:
 	def _apply_effects(self, state: dict[str, Any], *, base_route_segment: str) -> None:
 		faults: set[str] = set(str(code).lower() for code in state.get("active_fault_codes", []))
 		route_segment = base_route_segment
+		traction_type = str(state.get("traction_type") or "electric").lower()
 
 		for warning in self._active:
 			progress = self._effect_progress(warning)
@@ -171,14 +172,18 @@ class RandomWarningsEngine:
 			elif warning.name == "high_temperature":
 				state["traction_motor_temp_c"] = float(state.get("traction_motor_temp_c", 50.0)) + 55.0 * progress
 				state["converter_temp_c"] = float(state.get("converter_temp_c", 45.0)) + 32.0 * progress
+				if traction_type == "electric":
+					state["traction_current_a"] = float(state.get("traction_current_a", 200.0)) + 140.0 * progress
 
 			elif warning.name == "low_signal_quality":
 				state["signal_quality"] = max(0.5, float(state.get("signal_quality", 0.96)) - 0.24 * progress)
 				state["data_quality"] = max(0.6, float(state.get("data_quality", 0.98)) - 0.15 * progress)
 
 			elif warning.name == "voltage_sag":
-				state["catenary_voltage_kv"] = max(15.2, float(state.get("catenary_voltage_kv", 25.0)) - 9.0 * progress)
-				state["traction_power_kw"] = max(0.0, float(state.get("traction_power_kw", 0.0)) * (1.0 - 0.28 * progress))
+				if traction_type == "electric":
+					state["catenary_voltage_kv"] = max(15.2, float(state.get("catenary_voltage_kv", 25.0)) - 9.0 * progress)
+					state["traction_power_kw"] = max(0.0, float(state.get("traction_power_kw", 0.0)) * (1.0 - 0.28 * progress))
+					state["traction_current_a"] = float(state.get("traction_current_a", 150.0)) + 120.0 * progress
 
 			elif warning.name == "high_vibration":
 				state["vibration_gearbox"] = float(state.get("vibration_gearbox", 0.8)) + 2.4 * progress
@@ -187,6 +192,7 @@ class RandomWarningsEngine:
 				faults.add("upcoming_bad_track")
 				state["allowed_speed_kph"] = max(25.0, float(state.get("allowed_speed_kph", 95.0)) - 20.0 * progress)
 				state["vibration_gearbox"] = float(state.get("vibration_gearbox", 0.8)) + 0.7 * progress
+				state["brakes_temperature_c"] = float(state.get("brakes_temperature_c", 40.0)) + 8.0 * progress
 				route_segment = f"{base_route_segment}:bad_track"
 
 		if "signal_quality" in state:
@@ -196,6 +202,12 @@ class RandomWarningsEngine:
 
 		state["active_fault_codes"] = sorted(faults)
 		state["route_segment"] = route_segment
+		state["engine_temperature_c"] = float(state.get("traction_motor_temp_c", 0.0))
+		state["pressure_bar"] = float(state.get("brake_pipe_pressure_bar", 0.0))
+		voltage = state.get("catenary_voltage_kv")
+		current = state.get("traction_current_a")
+		state["voltage_kv"] = float(voltage) if voltage is not None else None
+		state["current_a"] = float(current) if current is not None else None
 
 	def _effect_progress(self, warning: _WarningLifecycle) -> float:
 		total_active = max(1, int(round(self._config.warning_duration_seconds * self._hz)))
