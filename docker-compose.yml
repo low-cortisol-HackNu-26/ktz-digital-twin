@@ -1,8 +1,8 @@
 services:
-  nginx:
-    build: ./infra/nginx
-    ports: ["80:80", "443:443"]
-    depends_on: [frontend, backend, dispatcher]
+  # nginx:
+  #   build: ./infra/nginx
+  #   ports: ["80:80", "443:443"]
+  #   depends_on: [frontend, backend, dispatcher]
 
   frontend:
     build: ./frontend
