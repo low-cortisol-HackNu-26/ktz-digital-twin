@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(53, 196, 168, 0.14), transparent 35%),
+    radial-gradient(circle at 80% 0%, rgba(243, 179, 61, 0.12), transparent 30%),
+    linear-gradient(165deg, #091116, #0a171d 45%, #0b2027 100%);
+  color: #e7f3f7;
+  font-family: "Segoe UI", "Noto Sans", sans-serif;
+}
+
+.card {
+  border: 1px solid #1e3b46;
+  background: linear-gradient(160deg, rgba(16, 34, 42, 0.95), rgba(11, 28, 34, 0.94));
+  border-radius: 12px;
+}

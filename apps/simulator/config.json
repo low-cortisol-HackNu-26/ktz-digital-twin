@@ -1,0 +1,13 @@
+{
+  "locomotives": [
+    "KZ8A-0001"
+  ],
+  "hz": 5,
+  "anomalies": {
+    "overspeed": false,
+    "brake_pressure_drop": false,
+    "motor_overheat": false,
+    "catenary_voltage_sag": false,
+    "gearbox_vibration_high": false
+  }
+}
