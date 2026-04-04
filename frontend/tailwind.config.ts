@@ -20,6 +20,7 @@ const config: Config = {
           critical: "#ef4444",
         },
         primary: "#374151",
+        secondary: "#717182",
       },
       fontFamily: {
         sans: ["var(--font-geist-sans)", "system-ui", "sans-serif"],

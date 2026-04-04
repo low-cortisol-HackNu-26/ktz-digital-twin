@@ -29,7 +29,7 @@ function HealthCheckView() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-2">
         <section
           className={cn(
             "panel relative overflow-hidden lg:col-span-1",
@@ -39,7 +39,7 @@ function HealthCheckView() {
           )}
         >
           <div className="mt-4 flex items-center gap-6">
-            <div className="h-80 w-80 shrink-0 relative">
+            <div className="h-80 w-80 shrink-0 relative mx-auto">
               <ResponsiveContainer width="100%" height="100%">
                 <RadialBarChart
                   innerRadius="80%"
@@ -56,18 +56,27 @@ function HealthCheckView() {
                   />
                 </RadialBarChart>
               </ResponsiveContainer>
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-              <p className="readout text-4xl text-primary">{health.score}</p>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-0">
+              <p className={cn(
+                  "mt-2 inline-flex rounded-md px-2 py-1 text-7xl font-semibold uppercase",
+                  health.category === "Норма" && "text-emerald-500",
+                  health.category === "Внимание" && "text-amber-500",
+                  health.category === "Критично" && "text-red-500",
+                )}>{health.score}</p>
+                <p className="text-xs text-secondary">
+                  Индекс здоровья
+                </p>
               <p
                 className={cn(
-                  "mt-2 inline-flex rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wide",
-                  health.category === "Норма" && "bg-emerald-500/15 text-emerald-300",
-                  health.category === "Внимание" && "bg-amber-500/15 text-amber-200",
-                  health.category === "Критично" && "bg-rose-500/15 text-rose-200",
+                  "mt-2 inline-flex rounded-full px-3 py-1 text-lg font-semibold tracking-wide",
+                  health.category === "Норма" && "bg-emerald-500/15 text-emerald-500",
+                  health.category === "Внимание" && "bg-amber-500/15 text-amber-500",
+                  health.category === "Критично" && "bg-rose-500/15 text-red-500 ring-1 ring-red-500",
                 )}
               >
                 {health.category}
               </p>
+              <p className="text-xs text-secondary mt-2">Улучшается</p>
             </div>
             </div>
           </div>
@@ -83,8 +92,10 @@ function HealthCheckView() {
             ))}
           </ul>
         </section>
+        <section>
 
-        <section className="panel lg:col-span-2">
+        </section>
+        {/*<section className="panel lg:col-span-2">
           <h2 className="text-sm font-medium text-slate-400">Live telemetry</h2>
           <p className="mt-1 text-xs text-slate-500">
             Values after mock EMA smoothing (temperature, brake pressure, voltage).
@@ -108,7 +119,7 @@ function HealthCheckView() {
               emphasize={packet.alert_codes.length > 0}
             />
           </div>
-        </section>
+        </section>*/}
       </div>
 
       <section className="panel">
