@@ -13,7 +13,8 @@ from ..db.session import get_session
 from ..models.user import AuthSession, DriverAccount
 from ..schemas.auth import TokenClaims
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token", auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/api/auth/token", auto_error=False)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
