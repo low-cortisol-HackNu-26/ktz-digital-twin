@@ -107,9 +107,23 @@ class TelemetryIngestResponse(BaseModel):
 	invalid_items: list[InvalidEvent]
 
 
+class ActiveWarningResponse(BaseModel):
+	warning_id: str
+	locomotive_id: str
+	rule_id: str
+	severity: str
+	title: str
+	message: str
+	recommended_action: str
+	active: bool
+	first_seen_at: datetime
+	last_seen_at: datetime
+
+
 class LocomotiveCurrentResponse(BaseModel):
 	locomotive_id: str
 	event: TelemetryEvent | None
+	active_warnings: list[ActiveWarningResponse] = Field(default_factory=list)
 
 
 class SystemMetricsResponse(BaseModel):

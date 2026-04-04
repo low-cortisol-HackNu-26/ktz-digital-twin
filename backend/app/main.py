@@ -24,6 +24,7 @@ from .models import (  # noqa: F401
     DriverAccount,
     IngestionStat,
     Locomotive,
+    LocomotiveWarning,
     LocomotivePosition,
     Route,
     TelemetryEventRecord,

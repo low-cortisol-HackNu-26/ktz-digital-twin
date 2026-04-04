@@ -29,16 +29,16 @@ function HealthCheckView() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-20 lg:grid-cols-2">
         <section
           className={cn(
-            "panel relative overflow-hidden lg:col-span-1",
+            "panel relative overflow-hidden lg:col-span-1 h-fit justify-self-end",
             health.category === "Критично" && "animate-critical-pulse border-health-critical/60",
             health.category === "Внимание" && "border-health-warning/50",
             health.category === "Норма" && "border-health-normal/30",
           )}
         >
-          <div className="mt-4 flex items-center gap-6">
+          <div className="mt-0 flex items-center gap-6">
             <div className="h-80 w-80 shrink-0 relative mx-auto">
               <ResponsiveContainer width="100%" height="100%">
                 <RadialBarChart
@@ -80,20 +80,17 @@ function HealthCheckView() {
             </div>
             </div>
           </div>
-          <ul className="mt-6 space-y-2 border-t border-cabin-border pt-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Top factors
-            </p>
-            {health.factors.map((f) => (
-              <li key={f} className="text-sm text-slate-300">
-                <span className="text-sky-400">· </span>
-                {f}
-              </li>
-            ))}
-          </ul>
         </section>
-        <section>
-
+        <section className="panel relative overflow-hidden lg:col-span-1 justify-self-start flex items-center justify-center">
+          <img src="/images/speed.svg" alt="Speed" className="w-80 h-64 " />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-0">
+          <p className="text-6xl font-semibold text-primary mt-10">{packet.speed.toPrecision(3)}</p>
+          <p className="text-xs text-primary">км/ч</p>
+          </div>
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-0">
+          <p className="text-2xl font-semibold text-primary mt-20">130</p>
+          </div>
+          <div className="absolute border-[6px] border-red-500 rounded-full w-16 h-16 bottom-0 mb-10"></div>
         </section>
         {/*<section className="panel lg:col-span-2">
           <h2 className="text-sm font-medium text-slate-400">Live telemetry</h2>

@@ -15,6 +15,7 @@ from ...core.runtime_state import cached_routes, metrics, publish_event
 from ...models.route import LocomotivePosition
 from ...models.telemetry import CurrentSnapshot, IngestionStat, Locomotive, TelemetryEventRecord
 from ...schemas.telemetry import (
+	ActiveWarningResponse,
 	IngestionStatsResponse,
 	InvalidEvent,
 	LocomotiveCurrentResponse,
@@ -35,6 +36,187 @@ def _to_event_dict(event: TelemetryEvent) -> dict[str, Any]:
 	payload["timestamp"] = event.timestamp.astimezone(timezone.utc).isoformat()
 	payload["ingestion_time"] = _utcnow().isoformat()
 	return payload
+
+
+def _warning_definition(
+	locomotive_id: str,
+	rule_id: str,
+	severity: str,
+	title: str,
+	message: str,
+	recommended_action: str,
+) -> dict[str, Any]:
+	return {
+		"warning_id": f"{locomotive_id}:{rule_id}",
+		"locomotive_id": locomotive_id,
+		"rule_id": rule_id,
+		"severity": severity,
+		"title": title,
+		"message": message,
+		"recommended_action": recommended_action,
+		"active": True,
+	}
+
+
+def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, Any]]:
+	candidates: dict[str, dict[str, Any]] = {}
+	locomotive_id = event.locomotive_id
+	fault_codes = {code.lower() for code in (event.active_fault_codes or [])}
+
+	if "upcoming_bad_track" in fault_codes:
+		candidates["upcoming_bad_track"] = _warning_definition(
+			locomotive_id=locomotive_id,
+			rule_id="upcoming_bad_track",
+			severity="warning",
+			title="Скоро участок с плохим состоянием пути",
+			message="По маршруту впереди ожидается участок с ухудшенным состоянием пути.",
+			recommended_action="Снизьте скорость и контролируйте плавность движения",
+		)
+
+	if event.allowed_speed_kph is not None and event.speed_kph > event.allowed_speed_kph + 1.0:
+		overspeed_by = event.speed_kph - event.allowed_speed_kph
+		severity = "critical" if overspeed_by >= 10.0 else "warning"
+		candidates["overspeed"] = _warning_definition(
+			locomotive_id=locomotive_id,
+			rule_id="overspeed",
+			severity=severity,
+			title="Превышение разрешенной скорости",
+			message=f"Current speed {event.speed_kph:.1f} kph exceeds allowed {event.allowed_speed_kph:.1f} kph.",
+			recommended_action="Снизьте скорость до допустимой",
+		)
+
+	max_temp = max(
+		float(event.transformer_temp_c or -999.0),
+		float(event.converter_temp_c or -999.0),
+		float(event.traction_motor_temp_c or -999.0),
+		float(event.axle_bearing_temp_c or -999.0),
+	)
+	if max_temp >= 95.0:
+		severity = "critical" if max_temp >= 110.0 else "warning"
+		candidates["high_temperature"] = _warning_definition(
+			locomotive_id=locomotive_id,
+			rule_id="high_temperature",
+			severity=severity,
+			title="Повышенная температура тягового двигателя",
+			message=f"Температура тягового двигателя достигла {float(event.traction_motor_temp_c or max_temp):.1f} C.",
+			recommended_action="Снизьте тяговую нагрузку",
+		)
+
+	min_quality = min(
+		float(event.signal_quality if event.signal_quality is not None else 1.0),
+		float(event.data_quality if event.data_quality is not None else 1.0),
+	)
+	if min_quality < 0.9:
+		severity = "critical" if min_quality < 0.75 else "warning"
+		candidates["low_signal_quality"] = _warning_definition(
+			locomotive_id=locomotive_id,
+			rule_id="low_signal_quality",
+			severity=severity,
+			title="Низкое качество сигнала",
+			message=f"Качество сигнала снижено до {min_quality:.2f}.",
+			recommended_action="Учитывайте возможную неточность показаний",
+		)
+
+	if event.catenary_voltage_kv is not None and event.catenary_voltage_kv < 20.0:
+		severity = "critical" if event.catenary_voltage_kv < 17.0 else "warning"
+		candidates["voltage_sag"] = _warning_definition(
+			locomotive_id=locomotive_id,
+			rule_id="voltage_sag",
+			severity=severity,
+			title="Просадка напряжения контактной сети",
+			message=f"Напряжение контактной сети составляет {event.catenary_voltage_kv:.1f} кВ.",
+			recommended_action="Учитывайте возможное снижение тяги",
+		)
+
+	max_vibration = max(float(event.vibration_motor or 0.0), float(event.vibration_gearbox or 0.0))
+	if max_vibration >= 2.0:
+		severity = "critical" if max_vibration >= 4.0 else "warning"
+		candidates["high_vibration"] = _warning_definition(
+			locomotive_id=locomotive_id,
+			rule_id="high_vibration",
+			severity=severity,
+			title="Повышенная вибрация",
+			message=f"Peak vibration is {max_vibration:.2f}.",
+			recommended_action="Снизьте скорость и контролируйте состояние локомотива",
+		)
+
+	return candidates
+
+
+def _to_warning_response(row: LocomotiveWarning) -> ActiveWarningResponse:
+	return ActiveWarningResponse(
+		warning_id=row.warning_id,
+		locomotive_id=row.locomotive_id,
+		rule_id=row.rule_id,
+		severity=row.severity,
+		title=row.title,
+		message=row.message,
+		recommended_action=row.recommended_action,
+		active=row.active,
+		first_seen_at=row.first_seen_at,
+		last_seen_at=row.last_seen_at,
+	)
+
+
+async def _sync_warnings_for_event(db: AsyncSession, event: TelemetryEvent) -> list[LocomotiveWarning]:
+	now = _utcnow()
+	candidates = _compute_warning_candidates(event)
+	candidate_ids = set(candidates.keys())
+
+	rows = (
+		await db.execute(
+			select(LocomotiveWarning).where(LocomotiveWarning.locomotive_id == event.locomotive_id)
+		)
+	).scalars().all()
+	rows_by_rule = {row.rule_id: row for row in rows}
+
+	for rule_id, warning in candidates.items():
+		row = rows_by_rule.get(rule_id)
+		if row is None:
+			row = LocomotiveWarning(
+				warning_id=warning["warning_id"],
+				locomotive_id=warning["locomotive_id"],
+				rule_id=warning["rule_id"],
+				severity=warning["severity"],
+				title=warning["title"],
+				message=warning["message"],
+				recommended_action=warning["recommended_action"],
+				active=True,
+				first_seen_at=now,
+				last_seen_at=now,
+			)
+			db.add(row)
+			rows_by_rule[rule_id] = row
+		else:
+			row.severity = warning["severity"]
+			row.title = warning["title"]
+			row.message = warning["message"]
+			row.recommended_action = warning["recommended_action"]
+			row.active = True
+			row.last_seen_at = now
+
+	for rule_id, row in rows_by_rule.items():
+		if rule_id not in candidate_ids and row.active:
+			row.active = False
+			row.last_seen_at = now
+
+	active_rows = [row for row in rows_by_rule.values() if row.active]
+	active_rows.sort(key=lambda item: item.last_seen_at, reverse=True)
+	return active_rows
+
+
+async def _get_active_warnings(db: AsyncSession, locomotive_id: str) -> list[ActiveWarningResponse]:
+	rows = (
+		await db.execute(
+			select(LocomotiveWarning)
+			.where(
+				LocomotiveWarning.locomotive_id == locomotive_id,
+				LocomotiveWarning.active.is_(True),
+			)
+			.order_by(LocomotiveWarning.last_seen_at.desc())
+		)
+	).scalars().all()
+	return [_to_warning_response(row) for row in rows]
 
 
 async def _ensure_locomotive(db: AsyncSession, locomotive_id: str) -> None:
@@ -73,11 +255,15 @@ async def ingest_telemetry(
 	started = time.perf_counter()
 	for event in valid_events:
 		await _ensure_locomotive(db, event.locomotive_id)
+		active_warnings = await _sync_warnings_for_event(db, event)
 		event_payload = event.model_dump(exclude={"ingestion_time"})
 		record = TelemetryEventRecord(**event_payload, ingestion_time=_utcnow())
 		db.add(record)
 
 		snapshot_payload = _to_event_dict(event)
+		snapshot_payload["active_warnings"] = [
+			_to_warning_response(row).model_dump(mode="json") for row in active_warnings
+		]
 		snapshot = (
 			await db.execute(
 				select(CurrentSnapshot).where(CurrentSnapshot.locomotive_id == event.locomotive_id)
@@ -190,7 +376,12 @@ async def get_current(
 		await db.execute(select(CurrentSnapshot).where(CurrentSnapshot.locomotive_id == locomotive_id))
 	).scalar_one_or_none()
 	event = TelemetryEvent.model_validate(row.payload) if row is not None else None
-	return LocomotiveCurrentResponse(locomotive_id=locomotive_id, event=event)
+	active_warnings = await _get_active_warnings(db, locomotive_id)
+	return LocomotiveCurrentResponse(
+		locomotive_id=locomotive_id,
+		event=event,
+		active_warnings=active_warnings,
+	)
 
 
 @router.get("/locomotives/{locomotive_id}/history")
@@ -237,6 +428,12 @@ async def get_latest_metrics(
 		raise HTTPException(status_code=404, detail="No telemetry for locomotive")
 
 	payload = row.payload
+	active_warnings = await _get_active_warnings(db, locomotive_id)
+	warnings_summary = {
+		"active_count": len(active_warnings),
+		"critical_count": len([item for item in active_warnings if item.severity == "critical"]),
+		"warning_count": len([item for item in active_warnings if item.severity == "warning"]),
+	}
 	return {
 		"locomotive_id": locomotive_id,
 		"speed_kph": payload.get("speed_kph"),
@@ -252,7 +449,17 @@ async def get_latest_metrics(
 		"signal_quality": payload.get("signal_quality"),
 		"data_quality": payload.get("data_quality"),
 		"timestamp": payload.get("timestamp"),
+		"active_warnings": [item.model_dump(mode="json") for item in active_warnings],
+		"warnings_summary": warnings_summary,
 	}
+
+
+@router.get("/locomotives/{locomotive_id}/warnings", response_model=list[ActiveWarningResponse])
+async def get_locomotive_warnings(
+	locomotive_id: str,
+	db: AsyncSession = Depends(get_db),
+) -> list[ActiveWarningResponse]:
+	return await _get_active_warnings(db, locomotive_id)
 
 
 @router.get("/system/metrics", response_model=SystemMetricsResponse)

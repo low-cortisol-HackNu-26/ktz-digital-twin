@@ -1,18 +1,31 @@
-# SQLAlchemy ORM model for alerts.
-#
-# class AlertRecord(Base):
-#   __tablename__ = "alerts"
-#
-#   id: UUID, primary key
-#   locomotive_id: String(64), indexed
-#   code: String(64)               (AlertCode, e.g. "ENG_OVERHEAT")
-#   severity: String(16)           ("info" | "warning" | "critical")
-#   message: Text
-#   fired_at: DateTime(timezone=True), not null
-#   resolved_at: DateTime(timezone=True), nullable
-#   acknowledged_at: DateTime(timezone=True), nullable
-#   acknowledged_by: String(256), nullable  (user sub from JWT)
-#
-# Indexes:
-#   (locomotive_id, fired_at DESC)
-#   (locomotive_id, code, resolved_at) — to find currently active alerts
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from sqlalchemy import Boolean, DateTime, Index, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from ..db.session import Base
+
+
+def _utcnow() -> datetime:
+	return datetime.now(timezone.utc)
+
+
+class LocomotiveWarning(Base):
+	__tablename__ = "locomotive_warnings"
+	__table_args__ = (
+		Index("ix_locomotive_warnings_loco_active", "locomotive_id", "active"),
+		Index("ix_locomotive_warnings_loco_rule", "locomotive_id", "rule_id"),
+	)
+
+	warning_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+	locomotive_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+	rule_id: Mapped[str] = mapped_column(String(64), nullable=False)
+	severity: Mapped[str] = mapped_column(String(16), nullable=False)
+	title: Mapped[str] = mapped_column(String(128), nullable=False)
+	message: Mapped[str] = mapped_column(Text, nullable=False)
+	recommended_action: Mapped[str] = mapped_column(Text, nullable=False)
+	active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+	first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+	last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
