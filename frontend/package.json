@@ -1,36 +1,37 @@
 {
-  "_comment": "Next.js 15 app. Key dependencies to list:",
-  "_dependencies": {
-    "next": "15.x",
-    "react": "19.x",
-    "react-dom": "19.x",
-    "zustand": "fleet + alert state store",
-    "@tanstack/react-query": "REST history + export fetching",
-    "recharts": "live scrolling charts, zoom, tooltips",
-    "react-leaflet": "route map",
-    "leaflet": "peer dep of react-leaflet",
-    "@turf/turf": "proximity distance calculations between trains on route",
-    "tailwindcss": "styling",
-    "@shadcn/ui": "accessible component library",
-    "axios": "REST client (attaches Bearer token from cardAuth)",
-    "date-fns": "timestamp formatting",
-    "jspdf": "client-side PDF export fallback",
-    "lucide-react": "icon set"
-  },
-  "_devDependencies": {
-    "typescript": "5.x",
-    "@types/react": "",
-    "@types/node": "",
-    "@types/leaflet": "",
-    "@turf/turf": "types included in package",
-    "eslint": "",
-    "prettier": ""
-  },
-  "_scripts": {
+  "name": "ktz-digital-twin-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.468.0",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-leaflet": "^5.0.0-rc.2",
+    "recharts": "^2.15.0",
+    "tailwind-merge": "^2.6.0",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.15",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.16.0",
+    "eslint-config-next": "^15.1.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.16",
+    "typescript": "^5.7.2"
   }
 }
