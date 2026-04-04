@@ -16,9 +16,21 @@ class StateMachine:
 		self.tick = 0
 		self.state: dict[str, Any] = deepcopy(DEFAULT_INITIAL_STATE)
 
+		# Keep locomotives close to the same route, but not at identical coordinates.
+		hash_value = sum(ord(ch) for ch in locomotive_id)
+		offset_idx = (hash_value % 9) - 4
+		self.gps_lat_offset = offset_idx * 0.00035
+		self.gps_lon_offset = offset_idx * 0.00045
+
 	def next_packet(self) -> dict[str, Any]:
 		self.tick += 1
-		self.state = update_state(self.state, self.tick, self.hz)
+		self.state = update_state(
+			self.state,
+			self.tick,
+			self.hz,
+			gps_lat_offset=self.gps_lat_offset,
+			gps_lon_offset=self.gps_lon_offset,
+		)
 
 		if self.scenario in {
 			"overspeed",
