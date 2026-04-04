@@ -9,12 +9,16 @@ import {
   useMap,
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+import { useRailwayMapLive } from "@/hooks/useRailwayMapLive";
 import {
   ROUTE_LINE,
   positionAlongRoute,
   useMockDashboardStore,
 } from "@/store/mockDashboardStore";
 import { formatSpeed } from "@/lib/utils";
+
+/** Simulator + telemetry /current default (override with NEXT_PUBLIC_MAP_LOCOMOTIVE_ID). */
+const DEFAULT_TELEMETRY_LOCO = "KZ8A-0001";
 
 function Recenter({ position }: { position: [number, number] }) {
   const map = useMap();
@@ -27,18 +31,27 @@ function Recenter({ position }: { position: [number, number] }) {
 export default function RailwayMap() {
   const progress = useMockDashboardStore((s) => s.routeProgress);
   const packet = useMockDashboardStore((s) => s.packet);
-  const pos = useMemo(() => positionAlongRoute(progress), [progress]);
+  const mockPos = useMemo(() => positionAlongRoute(progress), [progress]);
+  const locoId =
+    process.env.NEXT_PUBLIC_MAP_LOCOMOTIVE_ID?.trim() || DEFAULT_TELEMETRY_LOCO;
+  const live = useRailwayMapLive(locoId);
+  const linePositions = live.routeLine ?? ROUTE_LINE;
+  const pos = live.marker ?? mockPos;
   const center = pos;
+  const speedLabel =
+    live.speedKph != null ? formatSpeed(live.speedKph) : formatSpeed(packet.speed);
 
   return (
     <section className="panel flex h-[min(640px,calc(100vh-220px))] flex-col">
       <div className="mb-4 shrink-0">
         <h2 className="text-sm font-medium text-slate-400">Route map</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Display-only map (no pointer interaction). Position follows mock route.
+          Display-only map. Position and speed from{" "}
+          <code className="text-slate-400">/api/locomotives/…/current</code>
+          (gps_lat/gps_lon). Route line from map API when logged in, else mock.
         </p>
         <p className="readout-sm mt-2 text-slate-400">
-          {packet.locomotive_id} · {formatSpeed(packet.speed)}
+          {locoId} · {speedLabel}
         </p>
       </div>
       <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-cabin-border pointer-events-none">
@@ -57,7 +70,7 @@ export default function RailwayMap() {
           <Recenter position={pos} />
           <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
           <Polyline
-            positions={ROUTE_LINE}
+            positions={linePositions}
             pathOptions={{ color: "#38bdf8", weight: 4, opacity: 0.85 }}
           />
           <CircleMarker

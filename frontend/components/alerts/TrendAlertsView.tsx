@@ -116,9 +116,9 @@ function TrendAlertsView() {
                   <span
                     className={cn(
                       "inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-                      a.severity === "CRITICAL" && "bg-rose-500/15 text-rose-200",
-                      a.severity === "WARNING" && "bg-amber-500/15 text-amber-200",
-                      a.severity === "NORMAL" && "bg-emerald-500/15 text-emerald-200",
+                      a.severity === "Критично" && "bg-rose-500/15 text-rose-200",
+                      a.severity === "Внимание" && "bg-amber-500/15 text-amber-200",
+                      a.severity === "Норма" && "bg-emerald-500/15 text-emerald-200",
                     )}
                   >
                     {a.severity}
