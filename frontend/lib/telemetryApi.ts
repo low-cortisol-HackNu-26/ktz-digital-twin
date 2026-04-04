@@ -80,6 +80,21 @@ export async function fetchLocomotiveCurrent(
   }
 }
 
+/** Active warnings from GET /api/locomotives/{id}/warnings */
+export async function fetchLocomotiveWarnings(locomotiveId: string): Promise<ActiveWarningCurrent[]> {
+  if (!locomotiveId) return [];
+  try {
+    const res = await fetch(
+      `${getApiBase()}/api/locomotives/${encodeURIComponent(locomotiveId)}/warnings`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return [];
+    return (await res.json()) as ActiveWarningCurrent[];
+  } catch {
+    return [];
+  }
+}
+
 /** e.g. "ALA-NUR:002" → "ALA-NUR" */
 export function routeCodeFromSegment(routeSegment: string | null | undefined): string | null {
   if (!routeSegment?.trim()) return null;
