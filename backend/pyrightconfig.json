@@ -1,7 +1,9 @@
 {
+  "pythonPath": ".venv/bin/python",
   "venvPath": ".",
   "venv": ".venv",
-  "pythonVersion": "3.12",
+  "pythonVersion": "3.14",
   "typeCheckingMode": "basic",
-  "include": ["app", "tests"]
+  "include": ["app", "tests"],
+  "reportMissingModuleSource": "none"
 }
