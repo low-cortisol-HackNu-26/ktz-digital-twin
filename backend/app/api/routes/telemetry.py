@@ -42,19 +42,28 @@ def _to_event_dict(event: TelemetryEvent) -> dict[str, Any]:
 def _warning_definition(
 	locomotive_id: str,
 	rule_id: str,
+	source: str,
+	target_type: str,
+	target_id: str,
 	severity: str,
 	title: str,
 	message: str,
 	recommended_action: str,
 ) -> dict[str, Any]:
 	return {
-		"warning_id": f"{locomotive_id}:{rule_id}",
+		"warning_id": f"{source}:{target_type}:{target_id}:{rule_id}",
 		"locomotive_id": locomotive_id,
 		"rule_id": rule_id,
+		"source": source,
+		"target_type": target_type,
+		"target_id": target_id,
 		"severity": severity,
 		"title": title,
 		"message": message,
 		"recommended_action": recommended_action,
+		"created_by": None,
+		"metadata": None,
+		"expires_at": None,
 		"active": True,
 	}
 
@@ -68,6 +77,9 @@ def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, An
 		candidates["upcoming_bad_track"] = _warning_definition(
 			locomotive_id=locomotive_id,
 			rule_id="upcoming_bad_track",
+			source="system",
+			target_type="locomotive",
+			target_id=locomotive_id,
 			severity="warning",
 			title="Скоро участок с плохим состоянием пути",
 			message="По маршруту впереди ожидается участок с ухудшенным состоянием пути.",
@@ -80,6 +92,9 @@ def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, An
 		candidates["overspeed"] = _warning_definition(
 			locomotive_id=locomotive_id,
 			rule_id="overspeed",
+			source="system",
+			target_type="locomotive",
+			target_id=locomotive_id,
 			severity=severity,
 			title="Превышение разрешенной скорости",
 			message=f"Current speed {event.speed_kph:.1f} kph exceeds allowed {event.allowed_speed_kph:.1f} kph.",
@@ -97,6 +112,9 @@ def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, An
 		candidates["high_temperature"] = _warning_definition(
 			locomotive_id=locomotive_id,
 			rule_id="high_temperature",
+			source="system",
+			target_type="locomotive",
+			target_id=locomotive_id,
 			severity=severity,
 			title="Повышенная температура тягового двигателя",
 			message=f"Температура тягового двигателя достигла {float(event.traction_motor_temp_c or max_temp):.1f} C.",
@@ -112,6 +130,9 @@ def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, An
 		candidates["low_signal_quality"] = _warning_definition(
 			locomotive_id=locomotive_id,
 			rule_id="low_signal_quality",
+			source="system",
+			target_type="locomotive",
+			target_id=locomotive_id,
 			severity=severity,
 			title="Низкое качество сигнала",
 			message=f"Качество сигнала снижено до {min_quality:.2f}.",
@@ -123,6 +144,9 @@ def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, An
 		candidates["voltage_sag"] = _warning_definition(
 			locomotive_id=locomotive_id,
 			rule_id="voltage_sag",
+			source="system",
+			target_type="locomotive",
+			target_id=locomotive_id,
 			severity=severity,
 			title="Просадка напряжения контактной сети",
 			message=f"Напряжение контактной сети составляет {event.catenary_voltage_kv:.1f} кВ.",
@@ -135,6 +159,9 @@ def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, An
 		candidates["high_vibration"] = _warning_definition(
 			locomotive_id=locomotive_id,
 			rule_id="high_vibration",
+			source="system",
+			target_type="locomotive",
+			target_id=locomotive_id,
 			severity=severity,
 			title="Повышенная вибрация",
 			message=f"Peak vibration is {max_vibration:.2f}.",
@@ -146,6 +173,9 @@ def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, An
 		candidates["track_condition_alert"] = _warning_definition(
 			locomotive_id=locomotive_id,
 			rule_id="track_condition_alert",
+			source="system",
+			target_type="locomotive",
+			target_id=locomotive_id,
 			severity=severity,
 			title="Ухудшенные условия пути",
 			message=f"Текущий участок пути отмечен как {event.track_condition}.",
@@ -157,6 +187,9 @@ def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, An
 		candidates["weather_condition_alert"] = _warning_definition(
 			locomotive_id=locomotive_id,
 			rule_id="weather_condition_alert",
+			source="system",
+			target_type="locomotive",
+			target_id=locomotive_id,
 			severity=severity,
 			title="Неблагоприятные погодные условия",
 			message=f"Текущие погодные условия: {event.weather_condition}.",
@@ -171,24 +204,51 @@ def _to_warning_response(row: LocomotiveWarning) -> ActiveWarningResponse:
 		warning_id=row.warning_id,
 		locomotive_id=row.locomotive_id,
 		rule_id=row.rule_id,
+		source=row.source,
+		target_type=row.target_type,
+		target_id=row.target_id,
 		severity=row.severity,
 		title=row.title,
 		message=row.message,
 		recommended_action=row.recommended_action,
+		created_by=row.created_by,
+		metadata=row.warning_metadata,
+		expires_at=row.expires_at,
 		active=row.active,
 		first_seen_at=row.first_seen_at,
 		last_seen_at=row.last_seen_at,
 	)
 
 
+async def _expire_outdated_warnings(db: AsyncSession, *, locomotive_id: str | None = None) -> None:
+	now = _utcnow()
+	query = select(LocomotiveWarning).where(
+		LocomotiveWarning.active.is_(True),
+		LocomotiveWarning.expires_at.is_not(None),
+		LocomotiveWarning.expires_at <= now,
+	)
+	if locomotive_id is not None:
+		query = query.where(LocomotiveWarning.locomotive_id == locomotive_id)
+
+	rows = (await db.execute(query)).scalars().all()
+	for row in rows:
+		row.active = False
+		row.last_seen_at = now
+
+
 async def _sync_warnings_for_event(db: AsyncSession, event: TelemetryEvent) -> list[LocomotiveWarning]:
 	now = _utcnow()
 	candidates = _compute_warning_candidates(event)
 	candidate_ids = set(candidates.keys())
+	await _expire_outdated_warnings(db, locomotive_id=event.locomotive_id)
 
 	rows = (
 		await db.execute(
-			select(LocomotiveWarning).where(LocomotiveWarning.locomotive_id == event.locomotive_id)
+			select(LocomotiveWarning).where(
+				LocomotiveWarning.locomotive_id == event.locomotive_id,
+				LocomotiveWarning.source == "system",
+				LocomotiveWarning.target_type == "locomotive",
+			)
 		)
 	).scalars().all()
 	rows_by_rule = {row.rule_id: row for row in rows}
@@ -200,10 +260,16 @@ async def _sync_warnings_for_event(db: AsyncSession, event: TelemetryEvent) -> l
 				warning_id=warning["warning_id"],
 				locomotive_id=warning["locomotive_id"],
 				rule_id=warning["rule_id"],
+				source=warning["source"],
+				target_type=warning["target_type"],
+				target_id=warning["target_id"],
 				severity=warning["severity"],
 				title=warning["title"],
 				message=warning["message"],
 				recommended_action=warning["recommended_action"],
+				created_by=warning["created_by"],
+				warning_metadata=warning["metadata"],
+				expires_at=warning["expires_at"],
 				active=True,
 				first_seen_at=now,
 				last_seen_at=now,
@@ -215,6 +281,7 @@ async def _sync_warnings_for_event(db: AsyncSession, event: TelemetryEvent) -> l
 			row.title = warning["title"]
 			row.message = warning["message"]
 			row.recommended_action = warning["recommended_action"]
+			row.expires_at = warning["expires_at"]
 			row.active = True
 			row.last_seen_at = now
 
@@ -223,22 +290,62 @@ async def _sync_warnings_for_event(db: AsyncSession, event: TelemetryEvent) -> l
 			row.active = False
 			row.last_seen_at = now
 
-	active_rows = [row for row in rows_by_rule.values() if row.active]
-	active_rows.sort(key=lambda item: item.last_seen_at, reverse=True)
-	return active_rows
+	all_active = await _get_active_warning_rows(db, event.locomotive_id)
+	return all_active
 
 
-async def _get_active_warnings(db: AsyncSession, locomotive_id: str) -> list[ActiveWarningResponse]:
-	rows = (
+async def _get_active_warning_rows(db: AsyncSession, locomotive_id: str) -> list[LocomotiveWarning]:
+	await _expire_outdated_warnings(db, locomotive_id=locomotive_id)
+	now = _utcnow()
+
+	loco_rows = (
 		await db.execute(
 			select(LocomotiveWarning)
 			.where(
 				LocomotiveWarning.locomotive_id == locomotive_id,
 				LocomotiveWarning.active.is_(True),
 			)
-			.order_by(LocomotiveWarning.last_seen_at.desc())
+			.where(
+				(LocomotiveWarning.expires_at.is_(None))
+				| (LocomotiveWarning.expires_at > now)
+			)
 		)
 	).scalars().all()
+
+	snapshot = (
+		await db.execute(
+			select(CurrentSnapshot).where(CurrentSnapshot.locomotive_id == locomotive_id)
+		)
+	).scalar_one_or_none()
+	segment = None
+	if snapshot is not None:
+		segment = str(snapshot.payload.get("route_segment") or "").strip() or None
+
+	segment_rows: list[LocomotiveWarning] = []
+	if segment is not None:
+		segment_rows = (
+			await db.execute(
+				select(LocomotiveWarning)
+				.where(
+					LocomotiveWarning.target_type == "route_segment",
+					LocomotiveWarning.target_id == segment,
+					LocomotiveWarning.active.is_(True),
+				)
+				.where(
+					(LocomotiveWarning.expires_at.is_(None))
+					| (LocomotiveWarning.expires_at > now)
+				)
+			)
+		).scalars().all()
+
+	rows_by_id = {row.warning_id: row for row in loco_rows + segment_rows}
+	rows = list(rows_by_id.values())
+	rows.sort(key=lambda item: item.last_seen_at, reverse=True)
+	return rows
+
+
+async def _get_active_warnings(db: AsyncSession, locomotive_id: str) -> list[ActiveWarningResponse]:
+	rows = await _get_active_warning_rows(db, locomotive_id)
 	return [_to_warning_response(row) for row in rows]
 
 

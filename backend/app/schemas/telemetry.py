@@ -113,13 +113,47 @@ class ActiveWarningResponse(BaseModel):
 	warning_id: str
 	locomotive_id: str
 	rule_id: str
+	source: Literal["system", "dispatcher", "admin"]
+	target_type: Literal["locomotive", "route_segment"]
+	target_id: str
 	severity: str
 	title: str
 	message: str
 	recommended_action: str
+	created_by: str | None = None
+	metadata: dict | None = None
+	expires_at: datetime | None = None
 	active: bool
 	first_seen_at: datetime
 	last_seen_at: datetime
+
+
+class ManualWarningCreateRequest(BaseModel):
+	target_type: Literal["locomotive", "route_segment"]
+	target_id: str = Field(..., min_length=1, max_length=128)
+	warning_type: Literal[
+		"weather",
+		"track",
+		"maintenance_zone",
+		"temporary_speed_limit",
+		"manual_caution",
+	]
+	severity: Literal["info", "warning", "critical"]
+	title: str = Field(..., min_length=1, max_length=128)
+	message: str = Field(..., min_length=1)
+	recommended_action: str = Field(..., min_length=1)
+	duration_seconds: int = Field(..., ge=1, le=86400)
+	source: Literal["dispatcher", "admin"]
+	created_by: str | None = Field(default=None, max_length=128)
+	metadata: dict | None = None
+
+
+class ManualWarningCreateResponse(BaseModel):
+	warning_id: str
+	target_type: Literal["locomotive", "route_segment"]
+	target_id: str
+	affected_locomotive_ids: list[str]
+	expires_at: datetime
 
 
 class LocomotiveCurrentResponse(BaseModel):

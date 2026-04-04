@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.cors import CORSMiddleware
 
 from .api.routes.auth import router as auth_router
+from .api.routes.dispatcher import router as dispatcher_router
 from .api.routes.health import router as health_router
 from .api.routes.map import router as map_router
 from .api.routes.telemetry import router as telemetry_router
@@ -58,6 +59,33 @@ async def lifespan(_app: FastAPI):
                 await conn.execute(
                     text("ALTER TABLE telemetry_events ADD COLUMN IF NOT EXISTS weather_condition VARCHAR(32)")
                 )
+                await conn.execute(
+                    text("ALTER TABLE locomotive_warnings ADD COLUMN IF NOT EXISTS source VARCHAR(16) DEFAULT 'system'")
+                )
+                await conn.execute(
+                    text("ALTER TABLE locomotive_warnings ADD COLUMN IF NOT EXISTS target_type VARCHAR(16) DEFAULT 'locomotive'")
+                )
+                await conn.execute(
+                    text("ALTER TABLE locomotive_warnings ADD COLUMN IF NOT EXISTS target_id VARCHAR(128) DEFAULT ''")
+                )
+                await conn.execute(
+                    text("ALTER TABLE locomotive_warnings ADD COLUMN IF NOT EXISTS created_by VARCHAR(128)")
+                )
+                await conn.execute(
+                    text("ALTER TABLE locomotive_warnings ADD COLUMN IF NOT EXISTS warning_metadata JSONB")
+                )
+                await conn.execute(
+                    text("ALTER TABLE locomotive_warnings ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ")
+                )
+                await conn.execute(
+                    text("UPDATE locomotive_warnings SET source = COALESCE(source, 'system')")
+                )
+                await conn.execute(
+                    text("UPDATE locomotive_warnings SET target_type = COALESCE(target_type, 'locomotive')")
+                )
+                await conn.execute(
+                    text("UPDATE locomotive_warnings SET target_id = COALESCE(NULLIF(target_id, ''), locomotive_id)")
+                )
             logger.info("Database tables ready")
             break
         except (SQLAlchemyError, OSError) as exc:
@@ -100,6 +128,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router, prefix="/api")
+app.include_router(dispatcher_router, prefix="/api")
 app.include_router(map_router, prefix="/api")
 app.include_router(telemetry_router, prefix="/api")
 app.include_router(health_router)
