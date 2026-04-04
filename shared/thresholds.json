@@ -1,26 +1,65 @@
 {
-  "_comment": "Health Index configuration — edit without recompile. Loaded by backend on startup.",
-  "_structure": {
-    "parameters": {
-      "<paramName>": {
-        "weight": "number 0–1, sum of all weights must equal 1",
-        "normal": { "min": "number", "max": "number" },
-        "warning": { "min": "number", "max": "number" },
-        "critical": { "min": "number", "max": "number" },
-        "penaltyPerAlert": "number subtracted from score per active alert of this type"
-      }
+  "parameters": {
+    "speed": {
+      "weight": 0.15,
+      "normal":   { "min": 0,   "max": 120 },
+      "warning":  { "min": 120, "max": 140 },
+      "critical": { "min": 140, "max": 999 },
+      "penaltyPerAlert": 5
     },
-    "gradeThresholds": {
-      "A": ">=90",
-      "B": ">=75",
-      "C": ">=55",
-      "D": ">=35",
-      "E": "<35"
+    "engineTemp": {
+      "weight": 0.20,
+      "normal":   { "min": 60,  "max": 95  },
+      "warning":  { "min": 95,  "max": 110 },
+      "critical": { "min": 110, "max": 999 },
+      "penaltyPerAlert": 8
     },
-    "categoryThresholds": {
-      "NORMAL": ">=75",
-      "WARNING": ">=45",
-      "CRITICAL": "<45"
+    "oilPressure": {
+      "weight": 0.20,
+      "normal":   { "min": 4.0, "max": 8.0 },
+      "warning":  { "min": 2.0, "max": 4.0 },
+      "critical": { "min": 0.0, "max": 2.0 },
+      "penaltyPerAlert": 8
+    },
+    "brakePressure": {
+      "weight": 0.15,
+      "normal":   { "min": 6.0, "max": 9.0 },
+      "warning":  { "min": 4.0, "max": 6.0 },
+      "critical": { "min": 0.0, "max": 4.0 },
+      "penaltyPerAlert": 10
+    },
+    "fuelLevel": {
+      "weight": 0.10,
+      "normal":   { "min": 500,  "max": 3000 },
+      "warning":  { "min": 200,  "max": 500  },
+      "critical": { "min": 0,    "max": 200  },
+      "penaltyPerAlert": 3
+    },
+    "voltage": {
+      "weight": 0.10,
+      "normal":   { "min": 24.0, "max": 30.0 },
+      "warning":  { "min": 20.0, "max": 24.0 },
+      "critical": { "min": 0.0,  "max": 20.0 },
+      "penaltyPerAlert": 6
+    },
+    "current": {
+      "weight": 0.10,
+      "normal":   { "min": 0,   "max": 800  },
+      "warning":  { "min": 800, "max": 1000 },
+      "critical": { "min": 1000,"max": 9999 },
+      "penaltyPerAlert": 6
     }
+  },
+  "gradeThresholds": {
+    "A": 90,
+    "B": 75,
+    "C": 55,
+    "D": 35,
+    "E": 0
+  },
+  "categoryThresholds": {
+    "NORMAL": 75,
+    "WARNING": 45,
+    "CRITICAL": 0
   }
 }
