@@ -18,7 +18,7 @@ import {
 } from "@/lib/utils";
 import { format } from "date-fns";
 
-export function HealthCheckView() {
+function HealthCheckView() {
   const packet = useMockDashboardStore((s) => s.packet);
   const health = useMockDashboardStore((s) => s.health);
 
@@ -133,6 +133,9 @@ export function HealthCheckView() {
     </div>
   );
 }
+
+export default HealthCheckView;
+export { HealthCheckView };
 
 function gaugeColor(score: number) {
   if (score < 45) return "#ef4444";

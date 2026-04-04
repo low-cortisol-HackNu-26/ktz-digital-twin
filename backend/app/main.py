@@ -5,6 +5,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.cors import CORSMiddleware
@@ -67,6 +68,17 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
+<<<<<<< HEAD
+=======
+app = FastAPI(title="KTZ Digital Twin API", version="1.0.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+>>>>>>> 9e5217eee889e5328fa6df8fb712e25ab7466018
 app.include_router(auth_router, prefix="/api")
 
 

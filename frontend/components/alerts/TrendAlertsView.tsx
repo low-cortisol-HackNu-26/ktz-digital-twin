@@ -14,7 +14,7 @@ import { format } from "date-fns";
 import { useMockDashboardStore } from "@/store/mockDashboardStore";
 import { cn } from "@/lib/utils";
 
-export function TrendAlertsView() {
+function TrendAlertsView() {
   const alertLog = useMockDashboardStore((s) => s.alertLog);
   const history = useMockDashboardStore((s) => s.history);
 
@@ -135,3 +135,6 @@ export function TrendAlertsView() {
     </div>
   );
 }
+
+export default TrendAlertsView;
+export { TrendAlertsView };

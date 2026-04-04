@@ -34,3 +34,31 @@ export type AlertLogEntry = {
   time: string;
   severity: HealthCategory;
 };
+
+/** Backend `DriverInfo` (GET /api/auth/me). */
+export type DriverInfo = {
+  id: string;
+  company_id: string;
+  name: string;
+  role: "Machinist" | "Dispatcher" | "Admin";
+  locomotive_id: string | null;
+};
+
+/** Backend `SessionResponse` (POST /api/auth/card). */
+export type SessionResponse = {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_at: number;
+  session_id: string;
+  driver: DriverInfo;
+};
+
+/** Backend `RefreshResponse` (POST /api/auth/refresh). */
+export type RefreshResponse = {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_at: number;
+  driver: DriverInfo;
+};

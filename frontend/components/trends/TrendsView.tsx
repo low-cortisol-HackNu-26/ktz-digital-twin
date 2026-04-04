@@ -14,7 +14,7 @@ import {
 import { format } from "date-fns";
 import { useMockDashboardStore } from "@/store/mockDashboardStore";
 
-export function TrendsView() {
+function TrendsView() {
   const history = useMockDashboardStore((s) => s.history);
 
   const data = useMemo(
@@ -112,3 +112,6 @@ export function TrendsView() {
     </section>
   );
 }
+
+export default TrendsView;
+export { TrendsView };
