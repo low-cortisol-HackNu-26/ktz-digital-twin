@@ -50,7 +50,7 @@ async def create_manual_warning(
 ) -> ManualWarningCreateResponse:
 	now = _utcnow()
 	expires_at = now + timedelta(seconds=body.duration_seconds)
-	warning_id = f"manual:{body.target_type}:{body.target_id}:{body.warning_type}:{uuid4().hex[:12]}"
+	base_warning_id = f"manual:{body.target_type}:{body.target_id}:{body.warning_type}:{uuid4().hex[:10]}"
 	rule_id = f"manual_{body.warning_type}"
 
 	affected_locomotives: list[str] = []
@@ -61,31 +61,34 @@ async def create_manual_warning(
 	else:
 		raise HTTPException(status_code=422, detail="Unsupported target_type")
 
-	warning = LocomotiveWarning(
-		warning_id=warning_id,
-		locomotive_id=body.target_id if body.target_type == "locomotive" else f"route_segment:{body.target_id}",
-		rule_id=rule_id,
-		source=body.source,
-		target_type=body.target_type,
-		target_id=body.target_id,
-		severity=body.severity,
-		title=body.title,
-		message=body.message,
-		recommended_action=body.recommended_action,
-		created_by=body.created_by,
-		warning_metadata=body.metadata,
-		expires_at=expires_at,
-		active=True,
-		first_seen_at=now,
-		last_seen_at=now,
-	)
-	db.add(warning)
+	for locomotive_id in affected_locomotives:
+		warning = LocomotiveWarning(
+			warning_id=f"{base_warning_id}:{locomotive_id}",
+			locomotive_id=locomotive_id,
+			rule_id=rule_id,
+			source=body.source,
+			target_type=body.target_type,
+			target_id=body.target_id,
+			severity=body.severity,
+			title=body.title,
+			message=body.message,
+			recommended_action=body.recommended_action,
+			created_by=body.created_by,
+			warning_metadata=body.metadata,
+			expires_at=expires_at,
+			status="active",
+			cleared_at=None,
+			active=True,
+			first_seen_at=now,
+			last_seen_at=now,
+		)
+		db.add(warning)
 
 	for locomotive_id in affected_locomotives:
 		await _refresh_snapshot_and_publish(db, locomotive_id)
 
 	return ManualWarningCreateResponse(
-		warning_id=warning_id,
+		warning_id=base_warning_id,
 		target_type=body.target_type,
 		target_id=body.target_id,
 		affected_locomotive_ids=affected_locomotives,

@@ -56,14 +56,14 @@ export default function RailwayMap() {
       <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-cabin-border pointer-events-none">
         <MapContainer
           center={center}
-          zoom={100}
+          zoom={11}
           className="z-0 h-full w-full"
           scrollWheelZoom={false}
           dragging={false}
           doubleClickZoom={false}
           boxZoom={false}
           keyboard={false}
-          zoomControl={false}
+          zoomControl={true}
           attributionControl={false}
         >
           <Recenter position={pos} />

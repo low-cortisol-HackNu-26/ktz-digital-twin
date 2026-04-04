@@ -25,7 +25,7 @@ function HealthCheckView() {
     [health.score],
   );
 
-  const speedDisplay = event != null ? formatSpeed(event.speed_kph) : "—";
+  const speedDisplay = event != null ? (event.speed_kph).toPrecision(3) : "—";
   const allowedDisplay =
     event != null &&
     typeof event.allowed_speed_kph === "number" &&

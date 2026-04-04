@@ -33,6 +33,8 @@ class LocomotiveWarning(Base):
 	created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
 	warning_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 	expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+	status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+	cleared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 	active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 	first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 	last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)

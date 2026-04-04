@@ -42,6 +42,10 @@ class TelemetryEvent(BaseModel):
 	route_segment: str | None = Field(default=None, max_length=128)
 	track_condition: Literal["normal", "rough", "bad", "maintenance_zone"] | None = None
 	weather_condition: Literal["clear", "rain", "snow", "fog", "wind"] | None = None
+	route_progress_percent: float | None = Field(default=None, ge=0, le=100)
+	distance_to_destination_km: float | None = Field(default=None, ge=0)
+	eta_seconds: int | None = Field(default=None, ge=0)
+	eta_timestamp: datetime | None = None
 	gradient_permille: float | None = None
 	train_mass_tons: float | None = Field(default=None, ge=0)
 	active_fault_codes: list[str] = Field(default_factory=list)
@@ -120,9 +124,11 @@ class ActiveWarningResponse(BaseModel):
 	title: str
 	message: str
 	recommended_action: str
+	status: Literal["active", "cleared", "expired"]
 	created_by: str | None = None
 	metadata: dict | None = None
 	expires_at: datetime | None = None
+	cleared_at: datetime | None = None
 	active: bool
 	first_seen_at: datetime
 	last_seen_at: datetime
