@@ -1,3 +1,4 @@
+import { AuthGate } from "@/components/auth/AuthGate";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 
 export default function DashboardLayout({
@@ -5,5 +6,9 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <DashboardShell>{children}</DashboardShell>;
+  return (
+    <AuthGate>
+      <DashboardShell>{children}</DashboardShell>
+    </AuthGate>
+  );
 }

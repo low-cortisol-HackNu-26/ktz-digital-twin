@@ -1,57 +1,52 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { Activity, BellRing, MapPinned, TrendingUp } from "lucide-react";
+import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { shouldSuppressDashboardSpaceCycle } from "@/lib/kiosk";
 import { useAuth } from "@/context/AuthContext";
 import { useMockDashboardStore } from "@/store/mockDashboardStore";
 import { MockTelemetryTicker } from "./MockTelemetryTicker";
-import { format } from "date-fns";
+import { HealthCheckView } from "@/components/health/HealthCheckView";
+import { TrendAlertsView } from "@/components/alerts/TrendAlertsView";
+import { TrendsView } from "@/components/trends/TrendsView";
+import dynamic from "next/dynamic";
 
-/** Order: Health → Alerts → Trends → Map (Space cycles forward). */
-export const DASHBOARD_TAB_PATHS = [
-  "/dashboard/health",
-  "/dashboard/alerts",
-  "/dashboard/trends",
-  "/dashboard/map",
-] as const;
+const RailwayMap = dynamic(() => import("@/components/map/RailwayMap"), {
+  ssr: false,
+  loading: () => (
+    <section className="panel flex min-h-[480px] items-center justify-center text-slate-500">
+      Loading map…
+    </section>
+  ),
+});
 
-const TAB_META = [
+const TAB_COUNT = 4;
+
+const TAB_LABELS = [
   { label: "Health check", icon: Activity },
   { label: "Trend alerts", icon: BellRing },
   { label: "Trends", icon: TrendingUp },
   { label: "Map", icon: MapPinned },
 ] as const;
 
-export function DashboardShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const router = useRouter();
+export function DashboardClient() {
+  const [tab, setTab] = useState(0);
   const { driver } = useAuth();
   const connected = useMockDashboardStore((s) => s.connected);
   const latency = useMockDashboardStore((s) => s.simulatedLatencyMs);
   const receivedAt = useMockDashboardStore((s) => s.receivedAt);
   const loco = useMockDashboardStore((s) => s.packet.locomotive_id);
 
-  const activeIndex = DASHBOARD_TAB_PATHS.indexOf(
-    pathname as (typeof DASHBOARD_TAB_PATHS)[number],
-  );
-  const resolvedIndex = activeIndex >= 0 ? activeIndex : 0;
-
   const cycleTab = useCallback(() => {
-    const i = DASHBOARD_TAB_PATHS.indexOf(
-      pathname as (typeof DASHBOARD_TAB_PATHS)[number],
-    );
-    const current = i >= 0 ? i : 0;
-    const next = (current + 1) % DASHBOARD_TAB_PATHS.length;
-    router.push(DASHBOARD_TAB_PATHS[next]);
-  }, [pathname, router]);
+    setTab((i) => (i + 1) % TAB_COUNT);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code !== "Space") return;
-      if (shouldSuppressDashboardSpaceCycle(e.target)) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.('[data-kiosk-input="true"]')) return;
       e.preventDefault();
       cycleTab();
     };
@@ -72,15 +67,19 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               Railway operations dashboard
             </h1>
             <p className="readout-sm mt-1">
-              Locomotive <span className="text-slate-200">{loco}</span>
+              <span className="text-slate-200">{loco}</span>
+              <span className="mx-2 text-slate-600">·</span>
               {driver ? (
                 <>
-                  <span className="mx-2 text-slate-600">·</span>
-                  <span className="text-slate-300">{driver.name}</span>
+                  {driver.name}
                   <span className="mx-2 text-slate-600">·</span>
                   {driver.role}
+                  <span className="mx-2 text-slate-600">·</span>
+                  ID {driver.company_id}
                 </>
-              ) : null}
+              ) : (
+                "Operator"
+              )}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -114,19 +113,19 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div
-          className="mx-auto mt-4 max-w-[1600px] border-t border-cabin-border pt-4 pointer-events-none"
-          aria-label="Screens — press Space to switch"
+          className="mx-auto mt-4 max-w-[1600px] border-t border-cabin-border pt-4"
+          aria-label="Current view (use Space to change)"
         >
           <p className="text-xs uppercase tracking-wide text-slate-500">
-            Space — next screen (no pointer)
+            Space — next screen
           </p>
-          <ol className="mt-3 flex flex-wrap gap-3" role="list">
-            {TAB_META.map(({ label, icon: Icon }, i) => (
+          <ol className="mt-3 flex flex-wrap gap-3 pointer-events-none">
+            {TAB_LABELS.map(({ label, icon: Icon }, i) => (
               <li
                 key={label}
                 className={cn(
                   "inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium",
-                  i === resolvedIndex
+                  i === tab
                     ? "border-sky-500/50 bg-sky-500/15 text-sky-100"
                     : "border-cabin-border bg-cabin-bg/40 text-slate-500",
                 )}
@@ -138,7 +137,13 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </ol>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-[1600px] flex-1 px-6 py-6">{children}</main>
+
+      <main className="mx-auto w-full max-w-[1600px] flex-1 px-6 py-6">
+        {tab === 0 ? <HealthCheckView /> : null}
+        {tab === 1 ? <TrendAlertsView /> : null}
+        {tab === 2 ? <TrendsView /> : null}
+        {tab === 3 ? <RailwayMap /> : null}
+      </main>
     </div>
   );
 }

@@ -93,6 +93,7 @@ type DashboardState = {
   _ema: { temp: number; pressure: number; voltage: number };
   advance: () => void;
   setConnected: (v: boolean) => void;
+  setLocomotiveId: (locomotiveId: string) => void;
 };
 
 function initialPacket(): TelemetryPacket {
@@ -139,6 +140,10 @@ export const useMockDashboardStore = create<DashboardState>((set, get) => {
       voltage: first.voltage,
     },
     setConnected: (v) => set({ connected: v }),
+    setLocomotiveId: (locomotiveId) =>
+      set((state) => ({
+        packet: { ...state.packet, locomotive_id: locomotiveId },
+      })),
     advance: () => {
       const s = get();
       if (!s.connected) return;
@@ -176,7 +181,7 @@ export const useMockDashboardStore = create<DashboardState>((set, get) => {
 
       const timestamp = isoNow();
       const raw: TelemetryPacket = {
-        locomotive_id: LOC_ID,
+        locomotive_id: s.packet.locomotive_id,
         speed,
         fuel,
         temp_engine: temp,

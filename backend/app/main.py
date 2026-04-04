@@ -5,6 +5,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -53,4 +54,11 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="KTZ Digital Twin API", version="1.0.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(auth_router, prefix="/api")
