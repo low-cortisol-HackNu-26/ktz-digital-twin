@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response  # noqa: F401
 from sqlalchemy import func, select
@@ -14,10 +17,43 @@ from app.database import get_db
 from app.models.user import DriverAccount
 from app.schemas import ListUsersResponse, UserInfo
 
+_BACKUP_QUEUE_URL = os.getenv("BACKUP_QUEUE_URL", "http://localhost:8001")
+_BACKEND_SYNC_URL = os.getenv("BACKEND_SYNC_URL", "http://localhost:8000")
+_SYNC_SECRET = os.getenv("SYNC_SECRET", "internal-sync-secret")
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 _admin_only = require_role("Admin")
+
+
+async def _queue_user_sync(user: DriverAccount) -> None:
+    """Queue a user sync to the backend via backup-queue."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            payload = {
+                "event_type": "user_sync",
+                "endpoint": "/api/sync/users",
+                "target_url": _BACKEND_SYNC_URL,
+                "payload": {
+                    "id": user.id,
+                    "company_id": user.company_id,
+                    "password_hash": user.password_hash,
+                    "name": user.name,
+                    "role": user.role,
+                    "locomotive_id": user.locomotive_id,
+                    "is_active": user.is_active,
+                    "created_at": user.created_at.isoformat() if user.created_at else None,
+                },
+                "auth_token": _SYNC_SECRET,
+            }
+            await client.post(
+                f"{_BACKUP_QUEUE_URL}/api/queue/dispatcher",
+                json=payload,
+            )
+            logger.debug(f"Queued user sync: {user.company_id}")
+    except Exception as e:
+        logger.warning(f"Failed to queue user sync: {e}")
 
 
 @router.get("", response_model=ListUsersResponse, summary="List all operators")
@@ -72,6 +108,7 @@ async def update_user_role(
     await db.commit()
     await db.refresh(user)
     logger.info(f"User role updated: {user.company_id} → {new_role}")
+    asyncio.create_task(_queue_user_sync(user))
     return UserInfo.model_validate(user)
 
 
@@ -91,6 +128,7 @@ async def assign_locomotive(
     await db.commit()
     await db.refresh(user)
     logger.info(f"Locomotive assigned: {user.company_id} → {locomotive_id}")
+    asyncio.create_task(_queue_user_sync(user))
     return UserInfo.model_validate(user)
 
 
@@ -108,4 +146,5 @@ async def deactivate_user(
     user.is_active = False
     await db.commit()
     logger.info(f"User deactivated: {user.company_id}")
+    asyncio.create_task(_queue_user_sync(user))
     return Response(status_code=status.HTTP_204_NO_CONTENT)

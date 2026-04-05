@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 from uuid import uuid4
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func, select
@@ -34,8 +37,41 @@ from app.schemas import (
     SessionResponse,
 )
 
+_BACKUP_QUEUE_URL = os.getenv("BACKUP_QUEUE_URL", "http://localhost:8001")
+_BACKEND_SYNC_URL = os.getenv("BACKEND_SYNC_URL", "http://localhost:8000")
+_SYNC_SECRET = os.getenv("SYNC_SECRET", "internal-sync-secret")
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+async def _queue_user_sync(user: DriverAccount) -> None:
+    """Queue a user sync to the backend via backup-queue."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            payload = {
+                "event_type": "user_sync",
+                "endpoint": "/api/sync/users",
+                "target_url": _BACKEND_SYNC_URL,
+                "payload": {
+                    "id": user.id,
+                    "company_id": user.company_id,
+                    "password_hash": user.password_hash,
+                    "name": user.name,
+                    "role": user.role,
+                    "locomotive_id": user.locomotive_id,
+                    "is_active": user.is_active,
+                    "created_at": user.created_at.isoformat() if user.created_at else None,
+                },
+                "auth_token": _SYNC_SECRET,
+            }
+            await client.post(
+                f"{_BACKUP_QUEUE_URL}/api/queue/dispatcher",
+                json=payload,
+            )
+            logger.debug(f"Queued user sync: {user.company_id}")
+    except Exception as e:
+        logger.warning(f"Failed to queue user sync: {e}")
 
 
 def _driver_info(user: DriverAccount) -> DriverInfo:
@@ -103,6 +139,7 @@ async def register(
     await db.refresh(user)
 
     logger.info(f"User registered: {payload.uid} (role: {payload.role})")
+    asyncio.create_task(_queue_user_sync(user))
     return _driver_info(user)
 
 

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
+import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -684,6 +686,24 @@ async def _upsert_locomotive_traction_type(db: AsyncSession, *, locomotive_id: s
 		row.updated_at = _utcnow()
 
 
+async def _queue_telemetry_to_backup(snapshot_payload: dict[str, Any]) -> None:
+	"""Queue telemetry snapshot to backup-queue for dispatcher forwarding."""
+	backup_queue_url = os.getenv("BACKUP_QUEUE_URL")
+	if not backup_queue_url:
+		return  # If backup-queue is not configured, silently skip
+	
+	try:
+		async with httpx.AsyncClient(timeout=5.0) as client:
+			await client.post(
+				f"{backup_queue_url}/api/queue/telemetry",
+				json=snapshot_payload,
+			)
+	except Exception as e:
+		# Log but don't fail the request if backup-queue is unreachable
+		# In a real system, we'd log this error
+		pass
+
+
 @router.post("/ingest/telemetry", response_model=TelemetryIngestResponse)
 async def ingest_telemetry(
 	payload: dict[str, Any] | list[dict[str, Any]] = Body(...),
@@ -845,6 +865,7 @@ async def ingest_telemetry(
 			burst_multiplier=event.burst_multiplier,
 		)
 		await publish_event(snapshot_payload)
+		await _queue_telemetry_to_backup(snapshot_payload)
 
 	for item in invalid_items:
 		# Attribute invalid records to a synthetic bucket while preserving per-item errors.
@@ -864,6 +885,8 @@ async def ingest_telemetry(
 
 	metrics.record_db_write_latency((time.perf_counter() - started) * 1000)
 	metrics.record_ingested(valid=len(valid_events), invalid=len(invalid_items), dropped=0)
+
+	await db.commit()
 
 	return TelemetryIngestResponse(
 		accepted=len(valid_events),
