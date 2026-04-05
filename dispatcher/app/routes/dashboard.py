@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends
@@ -34,7 +35,7 @@ def _utcnow() -> datetime:
 @router.get("/fleet", response_model=FleetStatusResponse, summary="Get fleet status")
 async def get_fleet_status(
     db: AsyncSession = Depends(get_db),
-    _: TokenClaims | None = Depends(lambda: None),  # DEBUG: Make optional
+    _: TokenClaims = Depends(get_current_user),
 ) -> FleetStatusResponse:
     """Get current status of all locomotives in the fleet."""
     try:
@@ -55,9 +56,15 @@ async def get_fleet_status(
                 )
             )
         )
-        warning_counts: dict[str, int] = {}
+        critical_by_loco: dict[str, int] = {}
+        noncrit_by_loco: dict[str, int] = {}
         for w in warnings_result.scalars().all():
-            warning_counts[w.locomotive_id] = warning_counts.get(w.locomotive_id, 0) + 1
+            lid = w.locomotive_id
+            sev = (w.severity or "").lower()
+            if sev == "critical":
+                critical_by_loco[lid] = critical_by_loco.get(lid, 0) + 1
+            else:
+                noncrit_by_loco[lid] = noncrit_by_loco.get(lid, 0) + 1
 
         fleet_list: list[LocoStatusInfo] = []
         online_count = 0
@@ -71,24 +78,32 @@ async def get_fleet_status(
             if is_online:
                 online_count += 1
 
-            fleet_list.append(LocoStatusInfo(
-                locomotive_id=loco.id,
-                lat=pos.lat if pos else 0.0,
-                lng=pos.lng if pos else 0.0,
-                speed_kph=pos.speed if pos else 0.0,
-                heading=pos.heading if pos else None,
-                route_code=pos.route_code if pos else None,
-                route_name=pos.route_name if pos else None,
-                is_online=is_online,
-                active_warnings_count=warning_counts.get(loco.id, 0),
-                last_updated=pos.updated_at if pos else now,
-            ))
+            crit_n = critical_by_loco.get(loco.id, 0)
+            other_n = noncrit_by_loco.get(loco.id, 0)
+            fleet_list.append(
+                LocoStatusInfo(
+                    locomotive_id=loco.id,
+                    display_name=loco.display_name or loco.id,
+                    lat=pos.lat if pos else 0.0,
+                    lng=pos.lng if pos else 0.0,
+                    speed_kph=pos.speed if pos else 0.0,
+                    heading=pos.heading if pos else None,
+                    route_code=pos.route_code if pos else None,
+                    route_name=pos.route_name if pos else None,
+                    progress_pct=pos.progress_pct if pos else None,
+                    is_online=is_online,
+                    active_warnings_count=crit_n + other_n,
+                    active_critical_count=crit_n,
+                    active_noncritical_count=other_n,
+                    last_updated=pos.updated_at if pos else now,
+                )
+            )
 
         return FleetStatusResponse(
             locomotives=fleet_list,
             total_locomotives=len(locomotives),
             locomotives_online=online_count,
-            active_warnings_count=sum(warning_counts.values()),
+            active_warnings_count=sum(critical_by_loco.values()) + sum(noncrit_by_loco.values()),
         )
     except Exception as exc:
         logger.error(f"Error getting fleet status: {exc}")
@@ -144,6 +159,33 @@ async def debug_token(
         import traceback
         traceback.print_exc()
         return {"error": str(exc)}
+
+
+@router.get("/map/routes", summary="GeoJSON routes for dispatcher map (auth)")
+async def dispatcher_map_routes_geojson(
+    db: AsyncSession = Depends(get_db),
+    _: TokenClaims = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Same structure as main backend `/api/map/routes` for Leaflet."""
+    result = await db.execute(select(Route))
+    rows = result.scalars().all()
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "id": r.id,
+                "geometry": {"type": "LineString", "coordinates": r.coordinates},
+                "properties": {
+                    "id": r.id,
+                    "code": r.code,
+                    "name": r.name,
+                    "total_length_km": r.total_length_km,
+                },
+            }
+            for r in rows
+        ],
+    }
 
 
 @router.get("/routes", response_model=ListRoutesResponse, summary="Get all routes")

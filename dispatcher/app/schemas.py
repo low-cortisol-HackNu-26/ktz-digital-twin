@@ -152,14 +152,18 @@ class ListWarningsResponse(BaseModel):
 class LocoStatusInfo(BaseModel):
     """Current locomotive position and status (Pydantic response model)."""
     locomotive_id: str
+    display_name: Optional[str] = None
     lat: float
     lng: float
     speed_kph: float
     heading: Optional[float]
     route_code: Optional[str]
     route_name: Optional[str]
+    progress_pct: Optional[float] = None
     is_online: bool
     active_warnings_count: int
+    active_critical_count: int = 0
+    active_noncritical_count: int = 0
     last_updated: datetime
 
 

@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-disp-bg text-slate-100 antialiased;
+}
+
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  background: #0f1419;
+  border-radius: 12px;
+}

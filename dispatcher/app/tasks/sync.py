@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.alert import LocomotiveWarning
+from app.models.route import Route
 
 logger = logging.getLogger(__name__)
 
@@ -107,17 +108,66 @@ async def sync_warnings_from_backend(db: AsyncSession) -> int:
         return 0
 
 
+async def sync_routes_from_backend(db: AsyncSession) -> int:
+    """Pull route polylines from main backend (X-Sync-Secret)."""
+    if not SYNC_SECRET:
+        return 0
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            response = await client.get(
+                f"{BACKEND_URL}/api/sync/routes",
+                headers={"X-Sync-Secret": SYNC_SECRET},
+            )
+            response.raise_for_status()
+            data = response.json()
+            routes_list = data.get("routes", [])
+            n = 0
+            for item in routes_list:
+                rid = item.get("id")
+                if not rid:
+                    continue
+                existing = await db.execute(select(Route).where(Route.id == rid))
+                row = existing.scalar_one_or_none()
+                coords = item.get("coordinates") or []
+                code = str(item.get("code", ""))
+                name = str(item.get("name", ""))
+                tlen = float(item.get("total_length_km") or 0.0)
+                if row is None:
+                    db.add(
+                        Route(
+                            id=rid,
+                            code=code or rid[:8],
+                            name=name or code,
+                            coordinates=coords,
+                            total_length_km=tlen,
+                        )
+                    )
+                else:
+                    row.code = code or row.code
+                    row.name = name or row.name
+                    row.coordinates = coords
+                    row.total_length_km = tlen
+                n += 1
+            await db.commit()
+            logger.info("Synced %d railway routes from backend", n)
+            return n
+    except Exception as exc:
+        logger.error("Error syncing routes from backend: %s", exc)
+        await db.rollback()
+        return 0
+
+
 async def start_background_sync():
     """Start background sync task."""
-    logger.info("Starting background warning sync task...")
-    
+    logger.info("Starting background sync task (warnings + routes)...")
+
     while True:
         try:
             async for db in get_db():
                 await sync_warnings_from_backend(db)
+                await sync_routes_from_backend(db)
                 break
         except Exception as exc:
-            logger.error(f"Background sync task error: {exc}")
-        
-        # Sync every 30 seconds
+            logger.error("Background sync task error: %s", exc)
+
         await asyncio.sleep(30)

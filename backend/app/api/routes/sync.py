@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..deps import get_db
+from ...models.route import Route
 from ...models.user import DriverAccount
 
 logger = logging.getLogger(__name__)
@@ -83,3 +84,26 @@ async def sync_user(
     await db.commit()
     logger.info(f"User sync [{action}]: {payload.company_id} (id={payload.id})")
     return {"action": action, "id": payload.id, "company_id": payload.company_id}
+
+
+@router.get(
+    "/routes",
+    status_code=status.HTTP_200_OK,
+    summary="Export railway routes for dispatcher mirror DB",
+    dependencies=[Depends(_verify_sync_secret)],
+)
+async def sync_export_routes(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    """Returns all routes so the dispatcher service can draw fleet maps locally."""
+    rows = (await db.execute(select(Route))).scalars().all()
+    return {
+        "routes": [
+            {
+                "id": r.id,
+                "code": r.code,
+                "name": r.name,
+                "coordinates": r.coordinates,
+                "total_length_km": float(r.total_length_km or 0.0),
+            }
+            for r in rows
+        ]
+    }

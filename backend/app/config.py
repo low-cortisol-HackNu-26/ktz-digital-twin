@@ -14,7 +14,8 @@ class Settings(BaseSettings):
         default="change-me-in-production-min-32-chars!!",
         validation_alias="JWT_SECRET",
     )
-    ALLOWED_ORIGINS: list[str] = ["http://localhost:3000"]
+    # Kiosk (3000) + dispatcher-ui (3001) both call telemetry/map from the browser.
+    ALLOWED_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:3001"]
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
     LOG_LEVEL: str = "info"

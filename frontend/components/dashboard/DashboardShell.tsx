@@ -29,6 +29,15 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               {driver?.name}
             </h1>
             <p className="text-sm text-gray-500">Машинист локомотива</p>
+            {typeof process.env.NEXT_PUBLIC_DISPATCHER_APP_URL === "string" &&
+            process.env.NEXT_PUBLIC_DISPATCHER_APP_URL.length > 0 ? (
+              <a
+                href={process.env.NEXT_PUBLIC_DISPATCHER_APP_URL}
+                className="text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
+              >
+                Диспетчерская консоль →
+              </a>
+            ) : null}
           </div>
         </div>
       </header>
