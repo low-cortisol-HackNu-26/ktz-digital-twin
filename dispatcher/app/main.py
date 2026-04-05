@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -14,11 +15,13 @@ from fastapi.responses import JSONResponse
 from app.database import close_db, close_redis, init_db, init_redis
 from app.routes import auth, dashboard, users, warnings
 from app.routes import ingest
+from app.tasks.sync import start_background_sync
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 _startup_time = time.time()
+_sync_task: asyncio.Task | None = None
 
 
 @asynccontextmanager
@@ -26,9 +29,20 @@ async def lifespan(app: FastAPI):
     logger.info("Dispatcher Service starting...")
     await init_db()
     await init_redis()
+    
+    # Start background warning sync task
+    global _sync_task
+    _sync_task = asyncio.create_task(start_background_sync())
+    
     logger.info("Dispatcher Service ready on port 8002")
     yield
     logger.info("Dispatcher Service shutting down...")
+    if _sync_task:
+        _sync_task.cancel()
+        try:
+            await _sync_task
+        except asyncio.CancelledError:
+            pass
     await close_redis()
     await close_db()
     logger.info("Dispatcher Service stopped")

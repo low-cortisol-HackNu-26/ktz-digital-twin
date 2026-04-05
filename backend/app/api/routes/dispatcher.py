@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..deps import get_db
+from ..deps import get_db, get_sync_secret
 from ...core.runtime_state import publish_event
 from ...models.alert import LocomotiveWarning
 from ...models.telemetry import CurrentSnapshot
@@ -95,3 +95,33 @@ async def create_manual_warning(
 		affected_locomotive_ids=affected_locomotives,
 		expires_at=expires_at,
 	)
+
+
+@router.get("/warnings/all")
+async def get_all_warnings(
+	db: AsyncSession = Depends(get_db),
+	_: str = Depends(get_sync_secret),
+) -> dict:
+	"""Get ALL ACTIVE warnings (for dispatcher sync).
+	
+	Requires X-Sync-Secret header for authentication.
+	Returns only active warnings so dispatcher has correct real-time state.
+	Uses the same computation as /api/locomotives/{id}/current endpoint.
+	"""
+	from ...models.telemetry import Locomotive
+	
+	# Get all locomotives
+	loco_result = await db.execute(select(Locomotive))
+	locomotives = loco_result.scalars().all()
+	
+	all_warnings = []
+	for loco in locomotives:
+		# Get active warnings for each locomotive using same logic as current endpoint
+		warnings = await _get_active_warnings(db, loco.id)
+		all_warnings.extend([w.model_dump(mode="json") for w in warnings])
+	
+	return {
+		"warnings": all_warnings,
+		"total_count": len(all_warnings),
+	}
+

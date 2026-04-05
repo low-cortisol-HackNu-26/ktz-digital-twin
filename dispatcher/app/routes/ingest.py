@@ -19,7 +19,6 @@ from app.models.telemetry_ingest import LocomotiveTelemetry, LocomotiveSnapshot
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 
-
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
