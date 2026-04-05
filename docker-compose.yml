@@ -26,6 +26,8 @@ services:
       - SYNC_SECRET=${SYNC_SECRET}
       - BACKUP_QUEUE_URL=http://backup-queue:8001
       - KNOWN_LOCOMOTIVES=KZ8A-0001,KZ8A-0002,KZ8A-0003
+      # JSON list for pydantic-settings (dispatcher-ui on 3001 fetches /current from browser)
+      - 'ALLOWED_ORIGINS=["http://localhost:3000","http://localhost:3001"]'
 
   simulator:
     build: ./simulator
@@ -107,11 +109,24 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-dispatcher:5432/dispatcher
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=${JWT_SECRET}
-      - ALLOWED_ORIGINS=http://localhost:3000,http://nginx
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001,http://nginx
       - BACKUP_QUEUE_URL=http://backup-queue:8001
       - BACKEND_SYNC_URL=http://backend:8000
       - BACKEND_URL=http://backend:8000
       - SYNC_SECRET=${SYNC_SECRET}
+
+  dispatcher-ui:
+    build:
+      context: ./dispatcher-ui
+      dockerfile: Dockerfile
+    ports: ["3001:3001"]
+    depends_on:
+      - dispatcher
+      - backend
+    environment:
+      - NEXT_PUBLIC_DISPATCHER_API_URL=http://localhost:8002
+      - NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+      - NEXT_PUBLIC_CLIENT_APP_URL=http://localhost:3000
 
   redis:
     image: redis:7-alpine
