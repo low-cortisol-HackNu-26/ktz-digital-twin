@@ -17,6 +17,7 @@ import {
 } from "@/store/mockDashboardStore";
 import { DEFAULT_TELEMETRY_LOCOMOTIVE_ID } from "@/lib/telemetryApi";
 import { formatSpeed } from "@/lib/utils";
+import { MapRouteStatusPanels } from "@/components/map/MapRouteStatusPanels";
 
 function Recenter({ position }: { position: [number, number] }) {
   const map = useMap();
@@ -41,22 +42,11 @@ export default function RailwayMap() {
     live.speedKph != null ? formatSpeed(live.speedKph) : formatSpeed(packet.speed);
 
   return (
-    <section className="panel flex h-[min(640px,calc(100vh-220px))] flex-col">
-      <div className="mb-4 shrink-0">
-        <h2 className="text-sm font-medium text-slate-400">Route map</h2>
-        <p className="mt-1 text-xs text-slate-500">
-          Display-only map. Position and speed from{" "}
-          <code className="text-slate-400">/api/locomotives/…/current</code>
-          (gps_lat/gps_lon). Route line from map API when logged in, else mock.
-        </p>
-        <p className="readout-sm mt-2 text-slate-400">
-          {locoId} · {speedLabel}
-        </p>
-      </div>
+    <section className=" flex h-[min(720px,calc(100vh-180px))] flex-col">
       <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-cabin-border pointer-events-none">
         <MapContainer
           center={center}
-          zoom={11}
+          zoom={12}
           className="z-0 h-full w-full"
           scrollWheelZoom={false}
           dragging={false}
@@ -84,6 +74,11 @@ export default function RailwayMap() {
           />
         </MapContainer>
       </div>
+
+      <MapRouteStatusPanels
+        event={live.lastTelemetry?.event ?? null}
+        routeDisplayName={live.routeDisplayName}
+      />
     </section>
   );
 }

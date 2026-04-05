@@ -72,7 +72,7 @@ export function LoginForm() {
             ref={usernameRef}
             name="username"
             autoComplete="username"
-            className="mt-2 w-full rounded-lg border border-cabin-border bg-cabin-bg px-3 py-2 text-slate-100 outline-none ring-sky-500/40 focus:ring-2"
+            className="mt-2 w-full rounded-lg border border-cabin-border bg-cabin-bg px-3 py-2 text-slate-500 outline-none ring-sky-500/40 focus:ring-2"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             onKeyDown={(e) => {
@@ -93,7 +93,7 @@ export function LoginForm() {
             name="password"
             type="password"
             autoComplete="current-password"
-            className="mt-2 w-full rounded-lg border border-cabin-border bg-cabin-bg px-3 py-2 text-slate-100 outline-none ring-sky-500/40 focus:ring-2"
+            className="mt-2 w-full rounded-lg border border-cabin-border bg-cabin-bg px-3 py-2 text-slate-500 outline-none ring-sky-500/40 focus:ring-2"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => {
