@@ -415,6 +415,48 @@ def _compute_warning_candidates(event: TelemetryEvent) -> dict[str, dict[str, An
 			recommended_action="Соблюдайте пониженные скоростные ограничения и повышенную дистанцию",
 		)
 
+	if event.brakes_temperature_c is not None and event.brakes_temperature_c >= 140.0:
+		severity = "critical" if event.brakes_temperature_c >= 180.0 else "warning"
+		candidates["high_brakes_temperature"] = _warning_definition(
+			locomotive_id=locomotive_id,
+			rule_id="high_brakes_temperature",
+			source="system",
+			target_type="locomotive",
+			target_id=locomotive_id,
+			severity=severity,
+			title="Перегрев тормозных колодок",
+			message=f"Температура тормозов достигла {event.brakes_temperature_c:.1f} °C.",
+			recommended_action="Снизьте скорость и избегайте резкого торможения",
+		)
+
+	if event.pneumatic_pressure_bar is not None and event.pneumatic_pressure_bar < 6.0:
+		severity = "critical" if event.pneumatic_pressure_bar < 5.0 else "warning"
+		candidates["low_pneumatic_pressure"] = _warning_definition(
+			locomotive_id=locomotive_id,
+			rule_id="low_pneumatic_pressure",
+			source="system",
+			target_type="locomotive",
+			target_id=locomotive_id,
+			severity=severity,
+			title="Низкое давление в пневмосистеме",
+			message=f"Давление в пневмосистеме составляет {event.pneumatic_pressure_bar:.2f} бар.",
+			recommended_action="Проверьте компрессор и герметичность пневмомагистрали",
+		)
+
+	if event.fuel_level_percent is not None and event.fuel_level_percent < 70.0:
+		severity = "critical" if event.fuel_level_percent < 40.0 else "warning"
+		candidates["low_fuel"] = _warning_definition(
+			locomotive_id=locomotive_id,
+			rule_id="low_fuel",
+			source="system",
+			target_type="locomotive",
+			target_id=locomotive_id,
+			severity=severity,
+			title="Низкий уровень топлива",
+			message=f"Уровень топлива составляет {event.fuel_level_percent:.1f}%.",
+			recommended_action="Запланируйте дозаправку на ближайшей станции",
+		)
+
 	return candidates
 
 

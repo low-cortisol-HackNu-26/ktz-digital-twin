@@ -9,10 +9,12 @@ from typing import Any
 _DEFAULT_WARNING_TYPES = [
 	"overspeed",
 	"high_temperature",
+	"high_brakes_temperature",
 	"low_signal_quality",
 	"voltage_sag",
 	"high_vibration",
 	"bad_track_upcoming",
+	"low_pneumatic_pressure",
 ]
 
 
@@ -43,11 +45,11 @@ def _to_int(raw: str | None, default: int) -> int:
 @dataclass(slots=True)
 class RandomWarningsConfig:
 	random_warnings_enabled: bool = True
-	warning_duration_seconds: float = 6.0
-	warning_cooldown_seconds: float = 4.0
-	warning_probability_per_tick: float = 0.015
+	warning_duration_seconds: float = 10.0
+	warning_cooldown_seconds: float = 2.0
+	warning_probability_per_tick: float = 0.06
 	enabled_warning_types: list[str] | None = None
-	max_active_warnings_per_locomotive: int = 2
+	max_active_warnings_per_locomotive: int = 3
 
 	@classmethod
 	def from_env(cls) -> "RandomWarningsConfig":
@@ -187,6 +189,20 @@ class RandomWarningsEngine:
 
 			elif warning.name == "high_vibration":
 				state["vibration_gearbox"] = float(state.get("vibration_gearbox", 0.8)) + 2.4 * progress
+
+			elif warning.name == "high_brakes_temperature":
+				# Cap at 210 °C — backend schema rejects values > 220 °C, and
+				# _apply_live_metric_dynamics already clamps to 165 °C so an
+				# uncapped +160 would produce ~325 °C and cause 422 failures.
+				state["brakes_temperature_c"] = min(
+					210.0,
+					float(state.get("brakes_temperature_c", 40.0)) + 160.0 * progress,
+				)
+
+			elif warning.name == "low_pneumatic_pressure":
+				state["pneumatic_pressure_bar"] = max(3.5, float(state.get("pneumatic_pressure_bar", 7.5)) - 3.5 * progress)
+				state["compressor_state"] = "on"
+				state["compressor_cycles_per_hour"] = min(60.0, float(state.get("compressor_cycles_per_hour", 9.0)) + 20.0 * progress)
 
 			elif warning.name == "bad_track_upcoming":
 				faults.add("upcoming_bad_track")

@@ -102,13 +102,13 @@ class _State(Enum):
 
 
 # Tuning
-_CRUISE_KPH = 100.0		# normal line speed
-_APPROACH_KPH = 25.0	# crawl speed in last km before station
-_BRAKE_START_KM = 4.0	# start reducing speed this far before station
-_APPROACH_START_KM = 1.0	# switch to crawl this far before station
+_CRUISE_KPH = 120.0		# normal line speed
+_APPROACH_KPH = 40.0	# crawl speed in last km before station
+_BRAKE_START_KM = 2.0	# start reducing speed this far before station
+_APPROACH_START_KM = 0.5	# switch to crawl this far before station
 _STOP_THRESHOLD_KM = 0.05	# declare arrival within 50 m
-_DWELL_TICKS_BASE = 60		# ~12 s at 5 Hz
-_TERMINUS_TICKS = 150		# ~30 s at 5 Hz
+_DWELL_TICKS_BASE = 25		# ~5 s at 5 Hz
+_TERMINUS_TICKS = 50		# ~10 s at 5 Hz
 
 
 class StateMachine:

@@ -4,8 +4,8 @@ from typing import Any
 
 # KZ8A electric locomotive physics constants
 _MAX_SPEED_KPH = 120.0
-_TRACTION_ACCEL = 0.6		# m/s²  — motoring
-_SERVICE_BRAKE_DECEL = 0.8	# m/s²  — normal service brake
+_TRACTION_ACCEL = 1.8		# m/s²  — motoring
+_SERVICE_BRAKE_DECEL = 2.0	# m/s²  — normal service brake
 
 
 def update_physics(state: dict[str, Any], target_speed_kph: float, hz: int) -> dict[str, Any]:
