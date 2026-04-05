@@ -16,6 +16,28 @@ function warningPenalty(w: ActiveWarningCurrent): number {
   return 4;
 }
 
+function fromBackendHealth(response: LocomotiveCurrentResponse, isoFallback: string): HealthIndex | null {
+  const backend = response.health_index;
+  if (!backend || typeof backend.overall_health_index !== "number") return null;
+
+  const score = clampToRange(Math.round(backend.overall_health_index), 0, 100);
+  const factors = Array.isArray(backend.top_factors) && backend.top_factors.length > 0
+    ? backend.top_factors
+    : ["Подсистемы в допустимых пределах"];
+  const timestamp =
+    (typeof backend.timestamp === "string" && backend.timestamp) ||
+    response.event?.timestamp ||
+    response.event?.ingestion_time ||
+    isoFallback;
+
+  return {
+    score,
+    category: categoryFromScore(score),
+    factors: factors.slice(0, 6),
+    timestamp,
+  };
+}
+
 /**
  * Derives a 0–100 health index from simulator `event` + `active_warnings`
  * (same locomotive as map: GET /api/locomotives/{id}/current).
@@ -35,6 +57,11 @@ export function computeHealthFromLocomotiveCurrent(
   }
 
   const ev = response.event;
+  const backendHealth = fromBackendHealth(response, isoFallback);
+  if (backendHealth) {
+    return backendHealth;
+  }
+
   if (!ev) {
     return {
       score: 55,

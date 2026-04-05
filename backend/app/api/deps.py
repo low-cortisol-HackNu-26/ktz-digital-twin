@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncGenerator, Callable
 from datetime import datetime, timezone
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -75,3 +76,23 @@ def require_role(*roles: str) -> Callable[[TokenClaims], TokenClaims]:
         return current_user
 
     return dependency
+
+
+async def get_sync_secret(
+    x_sync_secret: str | None = Header(None),
+) -> str:
+    """Validate sync secret from X-Sync-Secret header."""
+    expected_secret = os.getenv("SYNC_SECRET", "")
+    if not expected_secret:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Sync secret not configured",
+        )
+    
+    if not x_sync_secret or x_sync_secret != expected_secret:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing sync secret",
+        )
+    
+    return x_sync_secret

@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
+import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..deps import get_db
+from ...core.health_index import compute_health_index
 from ...core.route_matcher import match_position
 from ...core.runtime_state import cached_routes, metrics, publish_event
 from ...models.alert import LocomotiveWarning
@@ -19,6 +22,7 @@ from ...models.route import LocomotivePosition
 from ...models.telemetry import CurrentSnapshot, IngestionStat, Locomotive, TelemetryEventRecord
 from ...schemas.telemetry import (
 	ActiveWarningResponse,
+	HealthIndexResponse,
 	IngestionStatsResponse,
 	InvalidEvent,
 	LocomotiveCurrentResponse,
@@ -682,6 +686,24 @@ async def _upsert_locomotive_traction_type(db: AsyncSession, *, locomotive_id: s
 		row.updated_at = _utcnow()
 
 
+async def _queue_telemetry_to_backup(snapshot_payload: dict[str, Any]) -> None:
+	"""Queue telemetry snapshot to backup-queue for dispatcher forwarding."""
+	backup_queue_url = os.getenv("BACKUP_QUEUE_URL")
+	if not backup_queue_url:
+		return  # If backup-queue is not configured, silently skip
+	
+	try:
+		async with httpx.AsyncClient(timeout=5.0) as client:
+			await client.post(
+				f"{backup_queue_url}/api/queue/telemetry",
+				json=snapshot_payload,
+			)
+	except Exception as e:
+		# Log but don't fail the request if backup-queue is unreachable
+		# In a real system, we'd log this error
+		pass
+
+
 @router.post("/ingest/telemetry", response_model=TelemetryIngestResponse)
 async def ingest_telemetry(
 	payload: dict[str, Any] | list[dict[str, Any]] = Body(...),
@@ -736,6 +758,9 @@ async def ingest_telemetry(
 				"pressure_bar",
 				"voltage_kv",
 				"current_a",
+				"load_mode",
+				"burst_active",
+				"burst_multiplier",
 				"route_progress_percent",
 				"distance_to_destination_km",
 				"eta_seconds",
@@ -834,7 +859,13 @@ async def ingest_telemetry(
 			snapshot.payload = snapshot_payload
 
 		metrics.record_event_seen(event.locomotive_id, event.timestamp)
+		metrics.record_load_mode(
+			load_mode=event.load_mode,
+			burst_active=event.burst_active,
+			burst_multiplier=event.burst_multiplier,
+		)
 		await publish_event(snapshot_payload)
+		await _queue_telemetry_to_backup(snapshot_payload)
 
 	for item in invalid_items:
 		# Attribute invalid records to a synthetic bucket while preserving per-item errors.
@@ -854,6 +885,8 @@ async def ingest_telemetry(
 
 	metrics.record_db_write_latency((time.perf_counter() - started) * 1000)
 	metrics.record_ingested(valid=len(valid_events), invalid=len(invalid_items), dropped=0)
+
+	await db.commit()
 
 	return TelemetryIngestResponse(
 		accepted=len(valid_events),
@@ -878,6 +911,7 @@ async def get_current(
 	).scalar_one_or_none()
 	active_warnings = await _get_active_warnings(db, locomotive_id)
 	event = None
+	health_index = None
 	if row is not None:
 		merged_payload = _recompute_derived_metrics_live(dict(row.payload))
 		base_allowed = merged_payload.get("base_allowed_speed_kph")
@@ -895,10 +929,22 @@ async def get_current(
 			row.payload = merged_payload
 			row.updated_at = _utcnow()
 		event = TelemetryEvent.model_validate(merged_payload)
+		health = compute_health_index(event)
+		health_index = HealthIndexResponse(
+			overall_health_index=health.overall_health_index,
+			electricity_health=health.electricity_health,
+			brake_health=health.brake_health,
+			pressure_health=health.pressure_health,
+			voltage_health=health.voltage_health,
+			current_health=health.current_health,
+			top_factors=health.top_factors,
+			timestamp=health.timestamp,
+		)
 	return LocomotiveCurrentResponse(
 		locomotive_id=locomotive_id,
 		event=event,
 		active_warnings=active_warnings,
+		health_index=health_index,
 	)
 
 
@@ -920,6 +966,11 @@ async def get_latest_metrics(
 	}
 	return {
 		"locomotive_id": locomotive_id,
+		"health_index": (
+			current.health_index.model_dump(mode="json")
+			if current.health_index is not None
+			else None
+		),
 		"speed_kph": payload.get("speed_kph"),
 		"traction_type": payload.get("traction_type"),
 		"fuel_level_percent": payload.get("fuel_level_percent"),

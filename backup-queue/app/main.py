@@ -1,46 +1,46 @@
 """Main FastAPI application for backup queue service."""
 
 import logging
-import os
 import time
 from contextlib import asynccontextmanager
-from typing import Any
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import close_db, get_db, init_db
-from .models import TelemetryQueueItem
+from .models import DispatcherQueueItem, TelemetryQueueItem
 from .schemas import (
+    DispatcherQueueStatusResponse,
+    DispatcherSyncResponse,
     HealthResponse,
+    QueueDispatcherRequest,
+    QueueDispatcherResponse,
+    QueueItemDetail,
     QueueStatusResponse,
     QueueTelemetryRequest,
     QueueTelemetryResponse,
     SyncResponse,
+    TelemetryItemDetail,
 )
-from .sync_manager import sync_manager
+from .sync_manager import dispatcher_sync_manager, sync_manager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Track startup time for uptime calculation
 _startup_time = time.time()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifecycle manager."""
-    # Startup
     logger.info("Initializing backup queue service...")
     await init_db()
     await sync_manager.start()
+    await dispatcher_sync_manager.start()
     logger.info("Backup queue service ready")
-    
     yield
-    
-    # Shutdown
     logger.info("Shutting down backup queue service...")
+    await dispatcher_sync_manager.stop()
     await sync_manager.stop()
     await close_db()
     logger.info("Backup queue service stopped")
@@ -48,41 +48,59 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Backup Queue Service",
-    description="Offline telemetry queueing and sync for railway locomotive monitoring",
-    version="1.0.0",
+    description="Offline buffering for telemetry (→ backend) and dispatcher events (→ dispatcher)",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
-router = APIRouter(prefix="/api/queue", tags=["queue"])
+# ---------------------------------------------------------------------------
+# Telemetry queue (existing — client → backend)
+# ---------------------------------------------------------------------------
+
+telemetry_router = APIRouter(prefix="/api/queue/telemetry", tags=["telemetry-queue"])
 
 
-@router.post(
-    "/telemetry",
+@telemetry_router.post(
+    "",
     response_model=QueueTelemetryResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Queue telemetry event",
+    summary="Queue telemetry event (store-and-forward to backend)",
 )
 async def queue_telemetry(
-    request: QueueTelemetryRequest,
+    raw: Request,
     db: AsyncSession = Depends(get_db),
 ) -> QueueTelemetryResponse:
     """
-    Queue a telemetry event locally.
-    
-    If backend is reachable, attempts to send immediately.
-    Otherwise, stores in SQLite queue for later sync.
+    Accept a telemetry event from the client.
+
+    Accepts two formats:
+    - Wrapped: {"locomotive_id": "...", "event": {...}, "source": "..."}
+    - Raw flat event (from simulator): {"locomotive_id": "...", "speed_kph": ..., ...}
+
+    - If the backend is reachable → forwards immediately and marks as synced.
+    - If not → stores in local SQLite and retries in the background every 30 s.
     """
     try:
-        # Create queue item
+        body = await raw.json()
+
+        # Support both wrapped and raw (simulator) formats
+        if "event" in body and isinstance(body["event"], dict):
+            locomotive_id = body.get("locomotive_id", "unknown")
+            event_data = body["event"]
+            source = body.get("source", "client")
+        else:
+            locomotive_id = body.get("locomotive_id", "unknown")
+            event_data = body
+            source = body.get("source", "simulator")
+
         queue_item = TelemetryQueueItem(
-            locomotive_id=request.locomotive_id,
-            event_data=request.event,
-            source=request.source,
+            locomotive_id=locomotive_id,
+            event_data=event_data,
+            source=source,
         )
         db.add(queue_item)
-        await db.flush()  # Get the ID without committing yet
-        
-        # Check if backend is reachable and try immediate sync
+        await db.flush()
+
         if sync_manager.backend_reachable:
             success = await sync_manager._sync_single(db, queue_item)
             if success:
@@ -93,8 +111,7 @@ async def queue_telemetry(
                     backend_status="reachable",
                     message="Event sent to backend immediately",
                 )
-        
-        # Backend unreachable or sync failed, keep in queue
+
         await db.commit()
         return QueueTelemetryResponse(
             queued=True,
@@ -102,27 +119,15 @@ async def queue_telemetry(
             backend_status="unreachable" if not sync_manager.backend_reachable else "reachable",
             message="Event queued for later sync",
         )
-    
-    except Exception as e:
-        logger.error(f"Error queueing telemetry: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to queue event: {str(e)}",
-        )
+
+    except Exception as exc:
+        logger.error(f"Error queueing telemetry: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to queue event: {exc}")
 
 
-@router.post(
-    "/sync",
-    response_model=SyncResponse,
-    summary="Manually trigger sync",
-)
-async def manual_sync() -> SyncResponse:
-    """
-    Manually trigger synchronization of queued events.
-    Useful for testing or forcing sync without waiting for background task.
-    """
+@telemetry_router.post("/sync", response_model=SyncResponse, summary="Manually trigger telemetry sync")
+async def manual_telemetry_sync() -> SyncResponse:
     result = await sync_manager.sync()
-    
     return SyncResponse(
         synced_count=result["synced"],
         failed_count=result["failed"],
@@ -131,107 +136,202 @@ async def manual_sync() -> SyncResponse:
     )
 
 
-@router.get(
-    "/status",
-    response_model=QueueStatusResponse,
-    summary="Get queue status",
-)
-async def get_status(db: AsyncSession = Depends(get_db)) -> QueueStatusResponse:
-    """
-    Get current status of the backup queue.
-    
-    Returns:
-    - queued_count: Number of events waiting to be synced
-    - synced_count: Total number of events successfully synced (all time)
-    - backend_reachable: Whether backend is currently reachable
-    - last_sync_at: Timestamp of last sync attempt
-    - oldest_queued_at: Timestamp of oldest unsync'd event
-    """
-    # Count unsync'd items
-    unsync_result = await db.execute(
-        select(func.count(TelemetryQueueItem.id)).where(
-            TelemetryQueueItem.synced_at.is_(None)
-        )
+@telemetry_router.get("/items", response_model=list[TelemetryItemDetail], summary="List telemetry queue items")
+async def list_telemetry_items(
+    pending_only: bool = True,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+) -> list[TelemetryItemDetail]:
+    """List items in the telemetry queue. pending_only=true shows only unsynced items."""
+    query = select(TelemetryQueueItem)
+    if pending_only:
+        query = query.where(TelemetryQueueItem.synced_at.is_(None))
+    query = query.order_by(TelemetryQueueItem.created_at.desc()).limit(limit)
+    result = await db.execute(query)
+    return [TelemetryItemDetail.model_validate(i) for i in result.scalars().all()]
+
+
+@telemetry_router.get("/status", response_model=QueueStatusResponse, summary="Telemetry queue status")
+async def telemetry_queue_status(db: AsyncSession = Depends(get_db)) -> QueueStatusResponse:
+    unsync = await db.execute(
+        select(func.count(TelemetryQueueItem.id)).where(TelemetryQueueItem.synced_at.is_(None))
     )
-    queued_count = unsync_result.scalar() or 0
-    
-    # Count synced items
-    synced_result = await db.execute(
-        select(func.count(TelemetryQueueItem.id)).where(
-            TelemetryQueueItem.synced_at.isnot(None)
-        )
+    synced = await db.execute(
+        select(func.count(TelemetryQueueItem.id)).where(TelemetryQueueItem.synced_at.isnot(None))
     )
-    synced_count = synced_result.scalar() or 0
-    
-    # Get oldest unsync'd item
-    oldest_result = await db.execute(
+    oldest = await db.execute(
         select(TelemetryQueueItem.created_at)
         .where(TelemetryQueueItem.synced_at.is_(None))
         .order_by(TelemetryQueueItem.created_at)
         .limit(1)
     )
-    oldest_queued_at = oldest_result.scalar()
-    
     return QueueStatusResponse(
-        queued_count=queued_count,
-        synced_count=synced_count,
+        queued_count=unsync.scalar() or 0,
+        synced_count=synced.scalar() or 0,
         backend_reachable=sync_manager.backend_reachable,
         last_sync_at=sync_manager.last_sync_at,
         last_error=sync_manager.last_error,
-        oldest_queued_at=oldest_queued_at,
+        oldest_queued_at=oldest.scalar(),
     )
 
 
-@app.get(
-    "/health",
-    response_model=HealthResponse,
-    summary="Health check",
+# ---------------------------------------------------------------------------
+# Dispatcher queue (new — client → dispatcher)
+# ---------------------------------------------------------------------------
+
+dispatcher_router = APIRouter(prefix="/api/queue/dispatcher", tags=["dispatcher-queue"])
+
+
+@dispatcher_router.post(
+    "",
+    response_model=QueueDispatcherResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Queue event for dispatcher (store-and-forward)",
 )
-async def health_check(db: AsyncSession = Depends(get_db)) -> HealthResponse:
+async def queue_dispatcher_event(
+    request: QueueDispatcherRequest,
+    db: AsyncSession = Depends(get_db),
+) -> QueueDispatcherResponse:
     """
-    Health check endpoint.
-    
-    Status levels:
-    - healthy: All systems operational, backend reachable
-    - degraded: Queue has items but working to sync
-    - unhealthy: Unable to sync, large queue accumulation
+    Accept any event destined for the dispatcher.
+
+    **Flow:**
+    1. Stores the event in local SQLite immediately (never loses data).
+    2. If dispatcher is reachable right now → forwards immediately.
+    3. If not → background task retries every 15 s with exponential backoff.
+
+    **auth_token** — pass your dispatcher JWT here. The queue service will use it
+    when forwarding. If the token expires before the dispatcher comes back, the item
+    is skipped and you'll need to re-queue with a fresh token.
+
+    **Common uses:**
+    - `endpoint: /api/warnings` — create a manual warning
+    - `endpoint: /api/dispatcher/fleet` — any fleet update
     """
-    # Count queue size
-    queue_result = await db.execute(
-        select(func.count(TelemetryQueueItem.id)).where(
-            TelemetryQueueItem.synced_at.is_(None)
+    try:
+        item = DispatcherQueueItem(
+            event_type=request.event_type,
+            endpoint=request.endpoint,
+            payload=request.payload,
+            auth_token=request.auth_token,
+            source=request.source or "client",
+            target_url=request.target_url,
         )
+        db.add(item)
+        await db.flush()
+
+        # Try immediate forward if dispatcher is up
+        if dispatcher_sync_manager.dispatcher_reachable:
+            success = await dispatcher_sync_manager._forward(db, item)
+            if success:
+                await db.commit()
+                return QueueDispatcherResponse(
+                    queued=True,
+                    queue_id=item.id,
+                    dispatcher_status="reachable",
+                    message="Event forwarded to dispatcher immediately",
+                )
+
+        await db.commit()
+        return QueueDispatcherResponse(
+            queued=True,
+            queue_id=item.id,
+            dispatcher_status="unreachable" if not dispatcher_sync_manager.dispatcher_reachable else "reachable",
+            message="Dispatcher unreachable — event stored, will retry automatically",
+        )
+
+    except Exception as exc:
+        logger.error(f"Error queueing dispatcher event: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to queue event: {exc}")
+
+
+@dispatcher_router.post("/sync", response_model=DispatcherSyncResponse, summary="Manually trigger dispatcher sync")
+async def manual_dispatcher_sync() -> DispatcherSyncResponse:
+    result = await dispatcher_sync_manager.sync()
+    return DispatcherSyncResponse(
+        synced_count=result["synced"],
+        failed_count=result["failed"],
+        remaining_count=result["remaining"],
+        dispatcher_reachable=dispatcher_sync_manager.dispatcher_reachable,
     )
-    queue_size = queue_result.scalar() or 0
-    
-    # Calculate uptime
-    uptime = time.time() - _startup_time
-    
-    # Determine status
-    if sync_manager.backend_reachable and queue_size == 0:
-        status_str = "healthy"
-    elif queue_size > 1000:  # Large backlog
-        status_str = "unhealthy"
+
+
+@dispatcher_router.get("/items", response_model=list[QueueItemDetail], summary="List dispatcher queue items")
+async def list_dispatcher_items(
+    pending_only: bool = True,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+) -> list[QueueItemDetail]:
+    """List items in the dispatcher queue. pending_only=true shows only unsynced items."""
+    query = select(DispatcherQueueItem)
+    if pending_only:
+        query = query.where(DispatcherQueueItem.synced_at.is_(None))
+    query = query.order_by(DispatcherQueueItem.created_at.desc()).limit(limit)
+    result = await db.execute(query)
+    return [QueueItemDetail.model_validate(i) for i in result.scalars().all()]
+
+
+@dispatcher_router.get("/status", response_model=DispatcherQueueStatusResponse, summary="Dispatcher queue status")
+async def dispatcher_queue_status(db: AsyncSession = Depends(get_db)) -> DispatcherQueueStatusResponse:
+    unsync = await db.execute(
+        select(func.count(DispatcherQueueItem.id)).where(DispatcherQueueItem.synced_at.is_(None))
+    )
+    synced = await db.execute(
+        select(func.count(DispatcherQueueItem.id)).where(DispatcherQueueItem.synced_at.isnot(None))
+    )
+    oldest = await db.execute(
+        select(DispatcherQueueItem.created_at)
+        .where(DispatcherQueueItem.synced_at.is_(None))
+        .order_by(DispatcherQueueItem.created_at)
+        .limit(1)
+    )
+    return DispatcherQueueStatusResponse(
+        queued_count=unsync.scalar() or 0,
+        synced_count=synced.scalar() or 0,
+        dispatcher_reachable=dispatcher_sync_manager.dispatcher_reachable,
+        last_sync_at=dispatcher_sync_manager.last_sync_at,
+        last_error=dispatcher_sync_manager.last_error,
+        oldest_queued_at=oldest.scalar(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Health & root
+# ---------------------------------------------------------------------------
+
+@app.get("/health", response_model=HealthResponse, summary="Health check")
+async def health_check(db: AsyncSession = Depends(get_db)) -> HealthResponse:
+    tq = await db.execute(
+        select(func.count(TelemetryQueueItem.id)).where(TelemetryQueueItem.synced_at.is_(None))
+    )
+    dq = await db.execute(
+        select(func.count(DispatcherQueueItem.id)).where(DispatcherQueueItem.synced_at.is_(None))
+    )
+    t_size = tq.scalar() or 0
+    d_size = dq.scalar() or 0
+    total = t_size + d_size
+
+    if sync_manager.backend_reachable and dispatcher_sync_manager.dispatcher_reachable and total == 0:
+        health_status = "healthy"
+    elif total > 1000:
+        health_status = "unhealthy"
     else:
-        status_str = "degraded" if queue_size > 0 else "healthy"
-    
+        health_status = "degraded" if total > 0 else "healthy"
+
     return HealthResponse(
-        status=status_str,
+        status=health_status,
         backend_reachable=sync_manager.backend_reachable,
-        queue_size=queue_size,
-        uptime_seconds=uptime,
+        dispatcher_reachable=dispatcher_sync_manager.dispatcher_reachable,
+        queue_size=t_size,
+        dispatcher_queue_size=d_size,
+        uptime_seconds=time.time() - _startup_time,
     )
 
 
-@app.get("/", summary="Service info")
+@app.get("/", summary="Service info", include_in_schema=False)
 async def root() -> dict[str, str]:
-    """Service information."""
-    return {
-        "service": "backup-queue",
-        "version": "1.0.0",
-        "docs": "/docs",
-    }
+    return {"service": "backup-queue", "version": "2.0.0", "docs": "/docs"}
 
 
-# Include routers
-app.include_router(router)
+app.include_router(telemetry_router)
+app.include_router(dispatcher_router)

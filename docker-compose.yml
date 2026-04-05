@@ -1,8 +1,8 @@
 services:
-  # nginx:
-  #   build: ./infra/nginx
-  #   ports: ["80:80", "443:443"]
-  #   depends_on: [frontend, backend, dispatcher]
+  nginx:
+    build: ./infra/nginx
+    ports: ["80:80", "443:443"]
+    depends_on: [frontend, backend, dispatcher]
 
   # frontend:
   #   build: ./frontend
@@ -23,20 +23,25 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=${JWT_SECRET}
+      - SYNC_SECRET=${SYNC_SECRET}
+      - BACKUP_QUEUE_URL=http://backup-queue:8001
       - KNOWN_LOCOMOTIVES=KZ8A-0001,KZ8A-0002,KZ8A-0003
 
   simulator:
     build: ./simulator
     depends_on:
-      postgres:
-        condition: service_healthy
       backend:
         condition: service_started
     environment:
       - INGEST_URL=http://backend:8000/api/ingest/telemetry
-      - LOCOS=KZ8A-0001,KZ8A-0002,KZ8A-0003
-      - HZ=5
-      - SCENARIO=normal
+      - LOCOS=${LOCOS:-KZ8A-0001,KZ8A-0002,KZ8A-0003}
+      - HZ=${HZ:-5}
+      - SCENARIO=${SCENARIO:-normal}
+      - BASELINE_RATE=${BASELINE_RATE:-5}
+      - HIGHLOAD_X10=${HIGHLOAD_X10:-false}
+      - HIGHLOAD_START_SECONDS=${HIGHLOAD_START_SECONDS:-10}
+      - HIGHLOAD_DURATION_SECONDS=${HIGHLOAD_DURATION_SECONDS:-10}
+      - BURST_MULTIPLIER=${BURST_MULTIPLIER:-10}
 
   postgres:
     image: timescale/timescaledb:latest-pg16
@@ -55,21 +60,58 @@ services:
       retries: 10
       start_period: 10s
 
+  backup-queue:
+    build: ./backup-queue
+    ports: ["8001:8001"]
+    depends_on:
+      dispatcher:
+        condition: service_started
+      backend:
+        condition: service_started
+    environment:
+      - BACKUP_DB_URL=sqlite+aiosqlite:///./backup_queue.db
+      - BACKEND_URL=http://dispatcher:8002
+      - DISPATCHER_URL=http://dispatcher:8002
+    volumes:
+      - backup_queue_data:/app
+
+  postgres-dispatcher:
+    image: timescale/timescaledb:latest-pg16
+    ports: ["5434:5432"]
+    environment:
+      - POSTGRES_DB=dispatcher
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata-dispatcher:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d dispatcher"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   dispatcher:
     build:
       context: .
       dockerfile: dispatcher/Dockerfile
     ports: ["8002:8002"]
     depends_on:
-      postgres:
+      postgres-dispatcher:
         condition: service_healthy
       redis:
         condition: service_started
+      backend:
+        condition: service_started
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-dispatcher:5432/dispatcher
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=${JWT_SECRET}
       - ALLOWED_ORIGINS=http://localhost:3000,http://nginx
+      - BACKUP_QUEUE_URL=http://backup-queue:8001
+      - BACKEND_SYNC_URL=http://backend:8000
+      - BACKEND_URL=http://backend:8000
+      - SYNC_SECRET=${SYNC_SECRET}
 
   redis:
     image: redis:7-alpine
@@ -83,3 +125,5 @@ services:
 
 volumes:
   pgdata:
+  pgdata-dispatcher:
+  backup_queue_data:
