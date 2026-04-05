@@ -42,6 +42,9 @@ DEFAULT_INITIAL_STATE: dict[str, Any] = {
 	"active_fault_codes": [],
 	"signal_quality": 0.98,
 	"data_quality": 0.99,
+	"load_mode": "normal",
+	"burst_active": False,
+	"burst_multiplier": 1,
 	"source": "simulator",
 	"schema_version": "1.0",
 }

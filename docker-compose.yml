@@ -1,8 +1,8 @@
 services:
-  # nginx:
-  #   build: ./infra/nginx
-  #   ports: ["80:80", "443:443"]
-  #   depends_on: [frontend, backend, dispatcher]
+  nginx:
+    build: ./infra/nginx
+    ports: ["80:80", "443:443"]
+    depends_on: [frontend, backend, dispatcher]
 
   # frontend:
   #   build: ./frontend
@@ -34,9 +34,14 @@ services:
         condition: service_started
     environment:
       - INGEST_URL=http://backend:8000/api/ingest/telemetry
-      - LOCOS=KZ8A-0001,KZ8A-0002,KZ8A-0003
-      - HZ=5
-      - SCENARIO=normal
+      - LOCOS=${LOCOS:-KZ8A-0001,KZ8A-0002,KZ8A-0003}
+      - HZ=${HZ:-5}
+      - SCENARIO=${SCENARIO:-normal}
+      - BASELINE_RATE=${BASELINE_RATE:-5}
+      - HIGHLOAD_X10=${HIGHLOAD_X10:-false}
+      - HIGHLOAD_START_SECONDS=${HIGHLOAD_START_SECONDS:-10}
+      - HIGHLOAD_DURATION_SECONDS=${HIGHLOAD_DURATION_SECONDS:-10}
+      - BURST_MULTIPLIER=${BURST_MULTIPLIER:-10}
 
   postgres:
     image: timescale/timescaledb:latest-pg16
