@@ -50,6 +50,9 @@ class TelemetryEvent(BaseModel):
 	vibration_gearbox: float | None = Field(default=None, ge=0)
 	gps_lat: float | None = None
 	gps_lon: float | None = None
+	heading: float | None = None
+	route_code: str | None = Field(default=None, max_length=64)
+	route_name: str | None = Field(default=None, max_length=256)
 	route_segment: str | None = Field(default=None, max_length=128)
 	track_condition: Literal["normal", "rough", "bad", "maintenance_zone"] | None = None
 	weather_condition: Literal["clear", "rain", "snow", "fog", "wind"] | None = None

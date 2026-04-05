@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1138,3 +1139,4 @@ async def get_locomotive_ingestion_stats(
 	if row is None:
 		raise HTTPException(status_code=404, detail="No ingestion stats for locomotive")
 	return IngestionStatsResponse.model_validate(row)
+

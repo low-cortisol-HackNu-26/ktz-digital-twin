@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+import io
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
+import httpx
 from fastapi import APIRouter, Depends
-from sqlalchemy import and_, select
+from fastapi.responses import StreamingResponse
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from sqlalchemy import and_, desc, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import TokenClaims, get_current_user, issue_access_token
@@ -16,6 +25,8 @@ from app.database import get_db
 from app.models.alert import LocomotiveWarning
 from app.models.route import LocomotivePosition, Route
 from app.models.telemetry import Locomotive
+from app.models.telemetry_ingest import LocomotiveTelemetry
+from app.models.user import AuthSession, DriverAccount
 from app.schemas import (
     DashboardMetrics,
     FleetStatusResponse,
@@ -144,14 +155,44 @@ async def debug_token(
     """Debug endpoint to get a test token without session validation."""
     try:
         session_id = str(uuid4())
+        user_id = "debug-test-user"
+        
+        # Check if DriverAccount exists, create if not
+        user_result = await db.execute(
+            select(DriverAccount).where(DriverAccount.id == user_id)
+        )
+        user = user_result.scalar_one_or_none()
+        if user is None:
+            user = DriverAccount(
+                id=user_id,
+                company_id="TEST_COMPANY",
+                password_hash="pbkdf2_sha256$390000$0000000000000000$0000000000000000000000000000000000000000000000000000000000000000",
+                name="Debug Test",
+                role="Admin",
+                locomotive_id=None,
+                is_active=True,
+            )
+            db.add(user)
+            await db.flush()
+        
         token, expires_at, _ = issue_access_token(
-            user_id="debug-test-user",
+            user_id=user_id,
             company_id="TEST_COMPANY",
             name="Debug Test",
             role="Admin",
             locomotive_id=None,
             session_id=session_id,
         )
+        
+        # Create AuthSession in database so token validation passes
+        auth_session = AuthSession(
+            id=session_id,
+            user_id=user_id,
+            refresh_jti=str(uuid4()),
+            expires_at=expires_at,
+        )
+        db.add(auth_session)
+        await db.commit()
         
         return {"access_token": token, "token_type": "bearer"}
     except Exception as exc:
@@ -315,3 +356,231 @@ async def get_locomotive_details(
     except Exception as exc:
         logger.error(f"Error getting locomotive details for {locomotive_id}: {exc}")
         return {"error": str(exc)}
+
+
+@router.get("/locomotives/{locomotive_id}/report/15min", summary="Download 15-min telemetry PDF report")
+async def generate_locomotive_report(
+    locomotive_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: TokenClaims = Depends(get_current_user),
+):
+    """Generate a PDF report with 15-minute locomotive telemetry summary and recent events."""
+    try:
+        # Fetch locomotive info from dispatcher db
+        loco_result = await db.execute(select(Locomotive).where(Locomotive.id == locomotive_id))
+        locomotive = loco_result.scalar_one_or_none()
+        if not locomotive:
+            return {"error": f"Locomotive {locomotive_id} not found"}, 404
+
+        # Calculate 15-minute time range
+        now = datetime.now(timezone.utc)
+        fifteen_min_ago = now - timedelta(minutes=15)
+        
+        # Fetch telemetry history from backend
+        backend_url = os.getenv("BACKEND_URL", "http://backend:8000")
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    f"{backend_url}/api/locomotives/{locomotive_id}/history",
+                    params={
+                        "from": fifteen_min_ago.isoformat(),
+                        "to": now.isoformat(),
+                        "limit": 500,
+                    },
+                    timeout=5.0
+                )
+                if response.status_code != 200:
+                    return {"error": f"No telemetry data available for {locomotive_id}"}, 404
+                events_data = response.json()
+            except Exception as exc:
+                logger.error(f"Error fetching from backend: {exc}")
+                return {"error": "Failed to fetch telemetry from backend"}, 503
+
+        if not events_data:
+            return {"error": f"No telemetry data for {locomotive_id} in last 15 minutes"}, 404
+
+        # Create PDF document
+        pdf_buffer = io.BytesIO()
+        doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
+        story = []
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle(
+            "CustomTitle",
+            parent=styles["Heading1"],
+            fontSize=16,
+            textColor=colors.HexColor("#1f2937"),
+            spaceAfter=12,
+            fontName="Helvetica-Bold",
+        )
+        heading_style = ParagraphStyle(
+            "CustomHeading",
+            parent=styles["Heading2"],
+            fontSize=12,
+            textColor=colors.HexColor("#374151"),
+            spaceAfter=10,
+            spaceBefore=12,
+            fontName="Helvetica-Bold",
+        )
+        
+        # Title
+        story.append(Paragraph(f"15-Minute Report: {locomotive.display_name}", title_style))
+        story.append(Spacer(1, 0.15 * inch))
+        
+        # Summary metrics
+        story.append(Paragraph("Summary Metrics (Last 15 Minutes)", heading_style))
+        
+        speeds = [e.get("speed_kph") or 0 for e in events_data]
+        temperatures = [e.get("engine_temperature_c") or 0 for e in events_data if e.get("engine_temperature_c")]
+        brake_pressures = [e.get("brake_cylinder_pressure_bar") or 0 for e in events_data if e.get("brake_cylinder_pressure_bar")]
+        
+        # Temperature metrics
+        transformer_temps = [e.get("transformer_temp_c") or 0 for e in events_data if e.get("transformer_temp_c")]
+        converter_temps = [e.get("converter_temp_c") or 0 for e in events_data if e.get("converter_temp_c")]
+        motor_temps = [e.get("traction_motor_temp_c") or 0 for e in events_data if e.get("traction_motor_temp_c")]
+        axle_temps = [e.get("axle_bearing_temp_c") or 0 for e in events_data if e.get("axle_bearing_temp_c")]
+        brake_temps = [e.get("brakes_temperature_c") or 0 for e in events_data if e.get("brakes_temperature_c")]
+        
+        # Pressure metrics
+        brake_pipe_pressures = [e.get("brake_pipe_pressure_bar") or 0 for e in events_data if e.get("brake_pipe_pressure_bar")]
+        pneumatic_pressures = [e.get("pneumatic_pressure_bar") or 0 for e in events_data if e.get("pneumatic_pressure_bar")]
+        catenary_voltages = [e.get("catenary_voltage_kv") or 0 for e in events_data if e.get("catenary_voltage_kv")]
+        
+        # Power metrics
+        traction_currents = [e.get("traction_current_a") or 0 for e in events_data if e.get("traction_current_a")]
+        traction_powers = [e.get("traction_power_kw") or 0 for e in events_data if e.get("traction_power_kw")]
+        regen_powers = [e.get("regen_power_kw") or 0 for e in events_data if e.get("regen_power_kw")]
+        
+        # Vibration metrics
+        vibration_motors = [e.get("vibration_motor") or 0 for e in events_data if e.get("vibration_motor")]
+        vibration_gearboxes = [e.get("vibration_gearbox") or 0 for e in events_data if e.get("vibration_gearbox")]
+        
+        # Compressor metrics
+        compressor_cycles = [e.get("compressor_cycles_per_hour") or 0 for e in events_data if e.get("compressor_cycles_per_hour")]
+        
+        # Quality metrics
+        signal_qualities = [e.get("signal_quality") or 0 for e in events_data if e.get("signal_quality")]
+        data_qualities = [e.get("data_quality") or 0 for e in events_data if e.get("data_quality")]
+        
+        summary_data = [
+            ["SPEED & MOTION", ""],
+            ["Average Speed", f"{sum(speeds) / len(speeds):.2f} km/h" if speeds else "N/A"],
+            ["Max Speed", f"{max(speeds):.2f} km/h" if speeds else "N/A"],
+            ["Min Speed", f"{min(speeds):.2f} km/h" if speeds else "N/A"],
+            ["", ""],
+            ["TEMPERATURE (°C)", ""],
+            ["Brake Temp", f"avg: {sum(brake_temps) / len(brake_temps):.1f}, max: {max(brake_temps):.1f}" if brake_temps else "N/A"],
+            ["Transformer Temp", f"avg: {sum(transformer_temps) / len(transformer_temps):.1f}, max: {max(transformer_temps):.1f}" if transformer_temps else "N/A"],
+            ["Converter Temp", f"avg: {sum(converter_temps) / len(converter_temps):.1f}, max: {max(converter_temps):.1f}" if converter_temps else "N/A"],
+            ["Motor Temp", f"avg: {sum(motor_temps) / len(motor_temps):.1f}, max: {max(motor_temps):.1f}" if motor_temps else "N/A"],
+            ["Axle Bearing Temp", f"avg: {sum(axle_temps) / len(axle_temps):.1f}, max: {max(axle_temps):.1f}" if axle_temps else "N/A"],
+            ["", ""],
+            ["PRESSURE (bar) / VOLTAGE", ""],
+            ["Brake Cylinder Pressure", f"avg: {sum(brake_pressures) / len(brake_pressures):.2f}, max: {max(brake_pressures):.2f}" if brake_pressures else "N/A"],
+            ["Brake Pipe Pressure", f"avg: {sum(brake_pipe_pressures) / len(brake_pipe_pressures):.2f}, max: {max(brake_pipe_pressures):.2f}" if brake_pipe_pressures else "N/A"],
+            ["Pneumatic Pressure", f"avg: {sum(pneumatic_pressures) / len(pneumatic_pressures):.2f}, max: {max(pneumatic_pressures):.2f}" if pneumatic_pressures else "N/A"],
+            ["Catenary Voltage (kV)", f"avg: {sum(catenary_voltages) / len(catenary_voltages):.2f}, min: {min(catenary_voltages):.2f}" if catenary_voltages else "N/A"],
+            ["", ""],
+            ["POWER & CURRENT", ""],
+            ["Traction Current (A)", f"avg: {sum(traction_currents) / len(traction_currents):.1f}, max: {max(traction_currents):.1f}" if traction_currents else "N/A"],
+            ["Traction Power (kW)", f"avg: {sum(traction_powers) / len(traction_powers):.1f}, max: {max(traction_powers):.1f}" if traction_powers else "N/A"],
+            ["Regen Power (kW)", f"avg: {sum(regen_powers) / len(regen_powers):.1f}, max: {max(regen_powers):.1f}" if regen_powers else "N/A"],
+            ["", ""],
+            ["VIBRATION & MECHANICAL", ""],
+            ["Motor Vibration", f"avg: {sum(vibration_motors) / len(vibration_motors):.2f}, max: {max(vibration_motors):.2f}" if vibration_motors else "N/A"],
+            ["Gearbox Vibration", f"avg: {sum(vibration_gearboxes) / len(vibration_gearboxes):.2f}, max: {max(vibration_gearboxes):.2f}" if vibration_gearboxes else "N/A"],
+            ["Compressor Cycles/hr", f"avg: {sum(compressor_cycles) / len(compressor_cycles):.1f}, max: {max(compressor_cycles):.1f}" if compressor_cycles else "N/A"],
+            ["", ""],
+            ["DATA QUALITY", ""],
+            ["Signal Quality", f"avg: {sum(signal_qualities) / len(signal_qualities):.1f}%" if signal_qualities else "N/A"],
+            ["Data Quality", f"avg: {sum(data_qualities) / len(data_qualities):.1f}%" if data_qualities else "N/A"],
+            ["Total Events", str(len(events_data))],
+            ["Report Generated", now.strftime("%Y-%m-%d %H:%M:%S UTC")],
+            ["Time Range", f"{fifteen_min_ago.strftime('%H:%M:%S')} - {now.strftime('%H:%M:%S')} UTC"],
+        ]
+        
+        summary_table = Table(summary_data, colWidths=[2.2 * inch, 2.3 * inch])
+        summary_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e5e7eb")),
+            ("BACKGROUND", (0, 4), (-1, 4), colors.HexColor("#f3f4f6")),
+            ("BACKGROUND", (0, 12), (-1, 12), colors.HexColor("#f3f4f6")),
+            ("BACKGROUND", (0, 20), (-1, 20), colors.HexColor("#f3f4f6")),
+            ("BACKGROUND", (0, 26), (-1, 26), colors.HexColor("#f3f4f6")),
+            ("BACKGROUND", (0, 31), (-1, 31), colors.HexColor("#f3f4f6")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
+            ("TEXTCOLOR", (0, 4), (-1, 4), colors.HexColor("#1f2937")),
+            ("TEXTCOLOR", (0, 12), (-1, 12), colors.HexColor("#1f2937")),
+            ("TEXTCOLOR", (0, 20), (-1, 20), colors.HexColor("#1f2937")),
+            ("TEXTCOLOR", (0, 26), (-1, 26), colors.HexColor("#1f2937")),
+            ("TEXTCOLOR", (0, 31), (-1, 31), colors.HexColor("#1f2937")),
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTNAME", (0, 4), (-1, 4), "Helvetica-Bold"),
+            ("FONTNAME", (0, 12), (-1, 12), "Helvetica-Bold"),
+            ("FONTNAME", (0, 20), (-1, 20), "Helvetica-Bold"),
+            ("FONTNAME", (0, 26), (-1, 26), "Helvetica-Bold"),
+            ("FONTNAME", (0, 31), (-1, 31), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+            ("GRID", (0, 0), (-1, -1), 1, colors.HexColor("#d1d5db")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9fafb")]),
+        ]))
+        story.append(summary_table)
+        story.append(Spacer(1, 0.2 * inch))
+        
+        # Page break
+        story.append(PageBreak())
+        
+        # Recent events table
+        story.append(Paragraph("Recent Telemetry Events (Latest 20)", heading_style))
+        story.append(Spacer(1, 0.1 * inch))
+        
+        events_table_data = [
+            ["Time", "Speed", "Tractive\nEffort", "Brake Cyl\nPress", "Brake Temp", "Motor\nTemp", "Converter\nTemp", "Traction\nPower", "Vibration", "Signal"],
+        ]
+        
+        for event in events_data[-20:]:  # Last 20 events
+            timestamp_str = event.get("timestamp", "N/A")
+            if timestamp_str != "N/A":
+                timestamp_str = timestamp_str[-8:] if len(timestamp_str) > 8 else timestamp_str
+            speed_str = f"{event.get('speed_kph', 0):.1f}" if event.get('speed_kph') else "N/A"
+            effort_str = f"{event.get('tractive_effort_kn', 'N/A')}"
+            brake_cyl_str = f"{event.get('brake_cylinder_pressure_bar', 'N/A')}"
+            brake_temp_str = f"{event.get('brakes_temperature_c', 'N/A')}"
+            motor_temp_str = f"{event.get('traction_motor_temp_c', 'N/A')}"
+            converter_temp_str = f"{event.get('converter_temp_c', 'N/A')}"
+            traction_power_str = f"{event.get('traction_power_kw', 'N/A')}"
+            vibration_str = f"{event.get('vibration_motor', 'N/A')}"
+            signal_str = f"{event.get('signal_quality', 'N/A')}"
+            
+            events_table_data.append([timestamp_str, speed_str, effort_str, brake_cyl_str, brake_temp_str, motor_temp_str, converter_temp_str, traction_power_str, vibration_str, signal_str])
+        
+        events_table = Table(events_table_data, colWidths=[0.9 * inch, 0.7 * inch, 0.75 * inch, 0.75 * inch, 0.75 * inch, 0.75 * inch, 0.75 * inch, 0.75 * inch, 0.75 * inch, 0.7 * inch])
+        events_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e5e7eb")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9fafb")]),
+        ]))
+        story.append(events_table)
+        
+        # Build PDF
+        doc.build(story)
+        pdf_buffer.seek(0)
+        
+        return StreamingResponse(
+            iter([pdf_buffer.getvalue()]),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={locomotive_id}_15min_report.pdf"},
+        )
+    except Exception as exc:
+        logger.error(f"Error generating report for {locomotive_id}: {exc}")
+        import traceback
+        traceback.print_exc()
+        return {"error": f"Failed to generate report: {str(exc)}"}, 500
+

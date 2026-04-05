@@ -4,12 +4,12 @@ services:
   #   ports: ["80:80", "443:443"]
   #   depends_on: [frontend, backend, dispatcher]
 
-  # frontend:
-  #   build: ./frontend
-  #   ports: ["3000:3000"]
-  #   environment:
-  #     - NEXT_PUBLIC_WS_URL=ws://nginx/ws
-  #     - NEXT_PUBLIC_API_URL=http://nginx/api
+  # # frontend:
+  # #   build: ./frontend
+  # #   ports: ["3000:3000"]
+  # #   environment:
+  # #     - NEXT_PUBLIC_WS_URL=ws://nginx/ws
+  # #     - NEXT_PUBLIC_API_URL=http://nginx/api
 
   backend:
     build: ./backend
