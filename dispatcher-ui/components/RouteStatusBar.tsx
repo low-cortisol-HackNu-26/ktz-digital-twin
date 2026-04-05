@@ -36,35 +36,33 @@ export function RouteStatusBar({
 
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border border-sky-500/40 bg-slate-900/80 px-4 py-3">
-        <div className="flex items-center gap-4">
-          <div className="h-3 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-800">
+      <div className="rounded-md border border-slate-200 bg-slate-100 px-3 py-2.5">
+        <div className="flex items-center gap-3">
+          <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-300/80">
             <div
-              className="h-full rounded-full bg-emerald-500 transition-[width] duration-500"
+              className="h-full rounded-full bg-emerald-600 transition-[width] duration-500"
               style={{ width: p != null ? `${w}%` : "0%" }}
             />
           </div>
-          <span className="shrink-0 text-lg font-bold tabular-nums text-white">
+          <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-800">
             {p != null ? `${Math.round(p)}%` : "—"}
           </span>
         </div>
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-200/80 bg-white px-3 py-2">
-          <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">
-            До пункта назначения
+        <div className="rounded border border-slate-200 bg-white px-3 py-2">
+          <p className="text-[10px] font-medium text-slate-500">До пункта назначения</p>
+          <p className="text-base font-semibold tabular-nums text-slate-900">
+            {fmtKm(event?.distance_to_destination_km)}
           </p>
-          <p className="text-lg font-bold text-slate-800">{fmtKm(event?.distance_to_destination_km)}</p>
         </div>
-        <div className="rounded-xl border border-slate-200/80 bg-white px-3 py-2">
-          <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">
-            Ожидаемое прибытие
-          </p>
-          <p className="text-lg font-bold text-slate-800">{fmtEta(event?.eta_timestamp)}</p>
+        <div className="rounded border border-slate-200 bg-white px-3 py-2">
+          <p className="text-[10px] font-medium text-slate-500">Ожидаемое прибытие</p>
+          <p className="text-base font-semibold tabular-nums text-slate-900">{fmtEta(event?.eta_timestamp)}</p>
         </div>
-        <div className="rounded-xl border border-slate-200/80 bg-white px-3 py-2">
-          <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">Маршрут</p>
-          <p className="text-lg font-bold leading-tight text-slate-800 break-words">{routeTitle}</p>
+        <div className="rounded border border-slate-200 bg-white px-3 py-2">
+          <p className="text-[10px] font-medium text-slate-500">Маршрут</p>
+          <p className="text-base font-semibold leading-snug text-slate-900 break-words">{routeTitle}</p>
         </div>
       </div>
     </div>

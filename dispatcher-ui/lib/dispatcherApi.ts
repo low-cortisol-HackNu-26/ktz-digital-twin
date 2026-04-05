@@ -112,3 +112,56 @@ export async function fetchLocomotiveDetails(
 export function lngLatToLeafletPair(coords: [number, number][]): [number, number][] {
   return coords.map(([lng, lat]) => [lat, lng]);
 }
+
+/** Sidebar / card subtitle when API omits route_name (uses GeoJSON from map sync). */
+export function fleetLocoSubtitle(l: LocoStatusInfo, routes: RouteCollection | null): string {
+  if (l.route_name?.trim()) return l.route_name.trim();
+  const code = l.route_code?.trim();
+  if (code) {
+    const hit = routes?.features?.find(
+      (f) => f.properties?.code?.toUpperCase() === code.toUpperCase(),
+    );
+    if (hit?.properties?.name?.trim()) return hit.properties.name.trim();
+    return code;
+  }
+  const dn = l.display_name?.trim();
+  if (dn && dn !== l.locomotive_id) return dn;
+  return "Маршрут не привязан";
+}
+
+/** PDF from dispatcher: GET …/locomotives/{id}/report/15min */
+export async function download15MinReportPdf(
+  locomotiveId: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    const h = await authHeaders();
+    const url = `${getDispatcherApiBase()}/api/dispatcher/locomotives/${encodeURIComponent(locomotiveId)}/report/15min`;
+    const res = await fetch(url, { headers: { ...h } });
+    if (!res.ok) {
+      let msg = `Ошибка ${res.status}`;
+      try {
+        const j = (await res.json()) as { detail?: string; error?: string };
+        msg = j.detail || j.error || msg;
+      } catch {
+        /* ignore */
+      }
+      return { ok: false, message: msg };
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get("Content-Disposition");
+    const match = cd?.match(/filename="?([^";]+)"?/i);
+    const filename = match?.[1] ?? `${locomotiveId}_15min_report.pdf`;
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Сбой загрузки" };
+  }
+}
