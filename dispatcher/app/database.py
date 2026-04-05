@@ -43,12 +43,16 @@ async def get_redis() -> Optional[Redis]:
 
 
 async def init_db() -> None:
-    """Verify database connection."""
-    import sqlalchemy
+    """Create dispatcher-owned tables and verify connection."""
+    from app.models.base import Base
+    # Import all models so their tables are registered on Base.metadata
+    import app.models.user  # noqa: F401
+    import app.models.alert  # noqa: F401
+    import app.models.telemetry_ingest  # noqa: F401
 
     async with engine.begin() as conn:
-        await conn.execute(sqlalchemy.text("SELECT 1"))
-    logger.info("Database connection verified")
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Dispatcher database tables created / verified")
 
 
 async def init_redis() -> None:

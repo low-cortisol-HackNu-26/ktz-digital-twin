@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from app.database import close_db, close_redis, init_db, init_redis
 from app.routes import auth, dashboard, users, warnings
+from app.routes import ingest
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ app.add_middleware(
 )
 
 # Routers
+app.include_router(ingest.router)
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(warnings.router)

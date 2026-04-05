@@ -8,6 +8,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -105,6 +106,29 @@ async def _locomotives_on_segment(db: AsyncSession, route_segment: str) -> list[
     return sorted(set(result))
 
 
+async def _queue_warning_to_backend(warning_data: dict) -> None:
+	"""Queue a manual warning to the backend via backup-queue."""
+	backup_queue_url = os.getenv("BACKUP_QUEUE_URL")
+	if not backup_queue_url:
+		return  # If backup-queue is not configured, silently skip
+	
+	try:
+		async with httpx.AsyncClient(timeout=5.0) as client:
+			await client.post(
+				f"{backup_queue_url}/api/queue/dispatcher",
+				json={
+					"event_type": "warning",
+					"endpoint": "/api/dispatcher/warnings",
+					"payload": warning_data,
+					"target_url": os.getenv("BACKEND_URL", "http://backend:8000"),
+					"source": "dispatcher"
+				},
+			)
+	except Exception as e:
+		# Log but don't fail the request if backup-queue is unreachable
+		logger.warning(f"Failed to queue warning to backend: {e}")
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -173,6 +197,30 @@ async def create_warning(
         f"Manual warning created: {warning_id} by {created_by} "
         f"(affects {len(affected_locomotives)} locomotive(s))"
     )
+    
+    # Queue warning to backend via backup-queue
+    warning_payload = {
+        "warning_id": warning_id,
+        "locomotive_id": loco_id_for_record,
+        "rule_id": rule_id,
+        "source": "dispatcher",
+        "target_type": request.target_type,
+        "target_id": request.target_id,
+        "severity": request.severity,
+        "title": request.title,
+        "message": request.message,
+        "recommended_action": request.recommended_action,
+        "status": "active",
+        "created_by": created_by,
+        "metadata": request.metadata,
+        "expires_at": expires_at.isoformat() if expires_at else None,
+        "cleared_at": None,
+        "active": True,
+        "first_seen_at": now.isoformat(),
+        "last_seen_at": now.isoformat()
+    }
+    await _queue_warning_to_backend(warning_payload)
+    
     return ManualWarningCreateResponse(
         warning_id=warning_id,
         target_type=request.target_type,

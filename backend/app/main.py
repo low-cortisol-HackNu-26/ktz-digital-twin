@@ -12,6 +12,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from .api.routes.auth import router as auth_router
 from .api.routes.dispatcher import router as dispatcher_router
+from .api.routes.sync import router as sync_router
 from .api.routes.health import router as health_router
 from .api.routes.map import router as map_router
 from .api.routes.telemetry import router as telemetry_router
@@ -140,5 +141,6 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(dispatcher_router, prefix="/api")
 app.include_router(map_router, prefix="/api")
 app.include_router(telemetry_router, prefix="/api")
+app.include_router(sync_router, prefix="/api")
 app.include_router(health_router)
 app.include_router(ws_router)
