@@ -81,6 +81,10 @@ const config: Config = {
               "0 0 0 4px rgba(239, 68, 68, 0.95), 0 12px 44px rgba(239, 68, 68, 0.55)",
           },
         },
+        "trend-toast-in": {
+          from: { opacity: "0", transform: "translateY(-0.5rem)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
       },
       animation: {
         "critical-pulse": "critical-pulse 2s ease-in-out infinite",
@@ -89,6 +93,7 @@ const config: Config = {
         "health-halo-critical": "health-halo-critical 1.5s ease-in-out infinite",
         "panel-glow-warning": "panel-glow-warning 2s ease-in-out infinite",
         "panel-glow-critical": "panel-glow-critical 1.35s ease-in-out infinite",
+        "trend-toast-in": "trend-toast-in 0.35s ease-out both",
       },
     },
   },
