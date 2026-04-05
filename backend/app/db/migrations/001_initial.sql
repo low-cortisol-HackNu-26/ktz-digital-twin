@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS locomotives (
 	id VARCHAR(64) PRIMARY KEY,
 	display_name VARCHAR(128),
+	traction_type VARCHAR(16) NOT NULL DEFAULT 'electric',
 	created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 	updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -9,14 +10,19 @@ CREATE TABLE IF NOT EXISTS telemetry_events (
 	id BIGSERIAL PRIMARY KEY,
 	timestamp TIMESTAMPTZ NOT NULL,
 	locomotive_id VARCHAR(64) NOT NULL,
+	traction_type VARCHAR(16),
 	speed_kph DOUBLE PRECISION NOT NULL,
 	target_speed_kph DOUBLE PRECISION,
 	allowed_speed_kph DOUBLE PRECISION,
+	fuel_level_percent DOUBLE PRECISION,
+	fuel_consumption_lph DOUBLE PRECISION,
+	energy_consumption_kwh DOUBLE PRECISION,
 	acceleration DOUBLE PRECISION,
 	traction_mode VARCHAR(16) NOT NULL,
 	tractive_effort_kn DOUBLE PRECISION,
 	brake_pipe_pressure_bar DOUBLE PRECISION,
 	brake_cylinder_pressure_bar DOUBLE PRECISION,
+	brakes_temperature_c DOUBLE PRECISION,
 	pantograph_up BOOLEAN NOT NULL,
 	catenary_voltage_kv DOUBLE PRECISION,
 	traction_current_a DOUBLE PRECISION,

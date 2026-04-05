@@ -31,7 +31,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${jetbrains.variable} min-h-screen bg-cabin-bg font-sans antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${jetbrains.variable} min-h-screen bg-black font-sans antialiased px-40`}
       >
         <Providers>{children}</Providers>
       </body>

@@ -32,6 +32,7 @@ class LocomotiveWarning(Base):
 	recommended_action: Mapped[str] = mapped_column(Text, nullable=False)
 	created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
 	warning_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+	allowed_speed_kph_override: Mapped[float | None] = mapped_column(nullable=True)
 	expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 	status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
 	cleared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

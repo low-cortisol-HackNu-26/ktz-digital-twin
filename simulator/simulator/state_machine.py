@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from copy import deepcopy
 from enum import Enum, auto
 from pathlib import Path
@@ -11,7 +12,7 @@ from .random_warnings import RandomWarningsEngine
 from .route_context import context_for_segment
 from .route_follower import RouteFollower
 from .scenarios.anomaly import apply_fault
-from .scenarios.normal import update_physics
+from .scenarios.normal import _MAX_SPEED_KPH, update_physics
 
 # ---------------------------------------------------------------------------
 # Route data
@@ -83,6 +84,13 @@ def _assign_route(locomotive_id: str) -> dict:
 	return _ROUTES[_loco_registry[locomotive_id]]
 
 
+def _infer_traction_type(locomotive_id: str) -> str:
+	loco = locomotive_id.strip().lower()
+	if loco.startswith("dsl") or "diesel" in loco or loco.startswith("fuel"):
+		return "diesel"
+	return "electric"
+
+
 # ---------------------------------------------------------------------------
 # Journey FSM states
 # ---------------------------------------------------------------------------
@@ -110,6 +118,8 @@ class StateMachine:
 		self.hz = max(1, hz)
 		self.tick = 0
 		self.state: dict[str, Any] = deepcopy(DEFAULT_INITIAL_STATE)
+		self._traction_type = _infer_traction_type(locomotive_id)
+		self.state["traction_type"] = self._traction_type
 
 		route = _assign_route(locomotive_id)
 		route_idx = _loco_registry[locomotive_id]
@@ -128,6 +138,15 @@ class StateMachine:
 			"catenary_voltage_sag", "gearbox_vibration_high",
 		}
 		self._random_warnings = RandomWarningsEngine(locomotive_id=locomotive_id, hz=self.hz)
+		seed = sum(ord(ch) for ch in locomotive_id)
+		self._metric_phase = (seed % 360) * (math.pi / 180.0)
+		self._fuel_burn_rate_moving = 0.00095 + ((seed % 7) * 0.00003)
+		self._fuel_burn_rate_idle = 0.00009 + ((seed % 5) * 0.00001)
+		self._engine_temp_bias = ((seed % 9) - 4) * 0.6
+		self._brake_temp_bias = ((seed % 11) - 5) * 0.5
+		self._pressure_bias = ((seed % 7) - 3) * 0.03
+		self._voltage_bias = ((seed % 5) - 2) * 0.12
+		self._current_scale = 1.0 + (((seed % 9) - 4) * 0.02)
 
 		# Prime GPS
 		self.state["gps_lat"] = self._follower.lat
@@ -145,6 +164,7 @@ class StateMachine:
 		target_speed = min(target_speed, allowed_speed)
 
 		self.state = update_physics(self.state, target_speed, self.hz)
+		self._apply_live_metric_dynamics()
 		self._apply_environmental_effects()
 
 		if self.scenario in self._fixed_fault_scenarios:
@@ -167,6 +187,11 @@ class StateMachine:
 				cruising=self._journey == _State.RUNNING and float(self.state["speed_kph"]) > 35.0,
 				base_route_segment=self._follower.segment_label,
 			)
+
+		# Post-fault and post-warning safety clamp: never exceed configured hard cap.
+		self.state["speed_kph"] = max(0.0, min(float(self.state.get("speed_kph", 0.0)), float(_MAX_SPEED_KPH)))
+
+		self._synchronize_metric_aliases()
 
 		return build_packet(self.locomotive_id, self.state)
 
@@ -204,6 +229,108 @@ class StateMachine:
 			self.state["signal_quality"] = max(0.86, float(self.state.get("signal_quality", 0.96)) - 0.03)
 
 		self.state["active_fault_codes"] = sorted(faults)
+
+	def _apply_live_metric_dynamics(self) -> None:
+		dt = 1.0 / self.hz
+		speed_kph = float(self.state.get("speed_kph", 0.0))
+		accel = float(self.state.get("acceleration", 0.0))
+		mode = str(self.state.get("traction_mode") or "coast")
+		faults = {str(code).upper() for code in self.state.get("active_fault_codes", [])}
+		wave = math.sin(self.tick / (self.hz * 7.0) + self._metric_phase)
+
+		moving = speed_kph > 2.0
+		if moving:
+			burn = self._fuel_burn_rate_moving * (0.7 + min(1.3, speed_kph / 90.0))
+		else:
+			burn = self._fuel_burn_rate_idle
+
+		if self._traction_type == "diesel":
+			fuel = float(self.state.get("fuel_level_percent", 85.0)) - burn
+			self.state["fuel_level_percent"] = max(5.0, min(100.0, fuel))
+			self.state["fuel_consumption_lph"] = round(max(2.0, burn * self.hz * 3600.0 * 0.85), 3)
+		else:
+			self.state["fuel_level_percent"] = None
+			self.state["fuel_consumption_lph"] = None
+
+		engine_temp = float(self.state.get("traction_motor_temp_c", 45.0))
+		if mode == "traction" and accel > 0.05:
+			engine_temp += (0.42 + 0.22 * min(1.0, speed_kph / 100.0)) * dt * self.hz
+		elif mode == "braking":
+			engine_temp -= 0.14 * dt * self.hz
+		elif moving:
+			engine_temp += 0.05 * dt * self.hz
+		else:
+			engine_temp -= 0.22 * dt * self.hz
+		if "MOTOR_OVERHEAT" in faults:
+			engine_temp += 1.4
+		self.state["traction_motor_temp_c"] = max(35.0, min(175.0, engine_temp + self._engine_temp_bias + wave * 0.35))
+
+		brake_temp = float(self.state.get("brakes_temperature_c", 38.0))
+		if mode == "braking":
+			brake_temp += 0.55 + min(0.6, speed_kph / 180.0)
+		elif moving:
+			brake_temp -= 0.10
+		else:
+			brake_temp -= 0.18
+		if "BRAKE_PRESSURE_DROP" in faults:
+			brake_temp += 0.45
+		self.state["brakes_temperature_c"] = max(24.0, min(165.0, brake_temp + self._brake_temp_bias + wave * 0.45))
+
+		pressure = 5.0 + self._pressure_bias
+		if mode == "braking":
+			pressure -= 0.7
+		elif mode == "traction":
+			pressure -= 0.08
+		if "BRAKE_PRESSURE_DROP" in faults:
+			pressure -= 1.6
+		self.state["brake_pipe_pressure_bar"] = max(2.2, min(5.4, pressure + wave * 0.05))
+
+		voltage = 25.0 + self._voltage_bias
+		if mode == "traction" and accel > 0.02:
+			voltage -= 0.22
+		if "CATENARY_VOLTAGE_SAG" in faults:
+			voltage -= 8.2
+		voltage_final = max(14.8, min(27.2, voltage + wave * 0.18))
+
+		current = float(self.state.get("traction_current_a", 0.0))
+		if mode == "traction" and accel > 0.05:
+			current_target = 720.0 + min(380.0, speed_kph * 3.4)
+		elif mode == "braking":
+			current_target = 120.0 + min(120.0, speed_kph * 0.9)
+		elif moving:
+			current_target = 360.0 + min(180.0, speed_kph * 1.2)
+		else:
+			current_target = 70.0
+		if "MOTOR_OVERHEAT" in faults:
+			current_target += 160.0
+		if "CATENARY_VOLTAGE_SAG" in faults:
+			current_target += 120.0
+		current += (current_target * self._current_scale - current) * 0.34
+		current_final = max(0.0, min(1800.0, current + wave * 9.0))
+
+		if self._traction_type == "electric":
+			self.state["catenary_voltage_kv"] = voltage_final
+			self.state["traction_current_a"] = current_final
+			self.state["energy_consumption_kwh"] = round(
+				float(self.state.get("energy_consumption_kwh") or 0.0)
+				+ max(0.0, float(self.state.get("traction_power_kw") or 0.0)) / (self.hz * 3600.0),
+				4,
+			)
+		else:
+			self.state["catenary_voltage_kv"] = None
+			self.state["traction_current_a"] = None
+			self.state["traction_power_kw"] = None
+			self.state["regen_power_kw"] = None
+			self.state["energy_consumption_kwh"] = None
+
+	def _synchronize_metric_aliases(self) -> None:
+		self.state["traction_type"] = self._traction_type
+		self.state["engine_temperature_c"] = float(self.state.get("traction_motor_temp_c", 0.0))
+		self.state["pressure_bar"] = float(self.state.get("brake_pipe_pressure_bar", 0.0))
+		voltage = self.state.get("catenary_voltage_kv")
+		current = self.state.get("traction_current_a")
+		self.state["voltage_kv"] = float(voltage) if voltage is not None else None
+		self.state["current_a"] = float(current) if current is not None else None
 
 	@staticmethod
 	def _segment_index_from_label(label: str) -> int:

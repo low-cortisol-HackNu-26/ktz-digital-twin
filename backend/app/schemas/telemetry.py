@@ -15,22 +15,33 @@ class TelemetryEvent(BaseModel):
 
 	timestamp: datetime
 	locomotive_id: str = Field(..., min_length=1, max_length=64)
+	traction_type: Literal["electric", "diesel", "fuel"] = "electric"
 	speed_kph: float = Field(..., ge=0)
 	target_speed_kph: float | None = Field(default=None, ge=0)
 	allowed_speed_kph: float | None = Field(default=None, ge=0)
+	fuel_level_percent: float | None = Field(default=None, ge=0, le=100)
+	fuel_consumption_lph: float | None = Field(default=None, ge=0)
+	energy_consumption_kwh: float | None = Field(default=None, ge=0)
+	base_allowed_speed_kph: float | None = Field(default=None, ge=0)
+	effective_allowed_speed_kph: float | None = Field(default=None, ge=0)
 	acceleration: float | None = None
 	traction_mode: Literal["traction", "coast", "braking", "regen"]
 	tractive_effort_kn: float | None = None
 	brake_pipe_pressure_bar: float | None = None
 	brake_cylinder_pressure_bar: float | None = None
+	brakes_temperature_c: float | None = None
+	pressure_bar: float | None = None
 	pantograph_up: bool
 	catenary_voltage_kv: float | None = None
+	voltage_kv: float | None = None
 	traction_current_a: float | None = None
+	current_a: float | None = None
 	traction_power_kw: float | None = None
 	regen_power_kw: float | None = None
 	transformer_temp_c: float | None = None
 	converter_temp_c: float | None = None
 	traction_motor_temp_c: float | None = None
+	engine_temperature_c: float | None = None
 	axle_bearing_temp_c: float | None = None
 	compressor_state: Literal["on", "off"] | None = None
 	compressor_cycles_per_hour: float | None = Field(default=None, ge=0)
@@ -55,7 +66,7 @@ class TelemetryEvent(BaseModel):
 	source: str | None = Field(default=None, max_length=64)
 	schema_version: str = Field(default="1.0", min_length=1, max_length=32)
 
-	@field_validator("brake_pipe_pressure_bar", "brake_cylinder_pressure_bar", "pneumatic_pressure_bar")
+	@field_validator("brake_pipe_pressure_bar", "brake_cylinder_pressure_bar", "pneumatic_pressure_bar", "pressure_bar")
 	@classmethod
 	def validate_pressure_ranges(cls, value: float | None) -> float | None:
 		if value is None:
@@ -68,6 +79,8 @@ class TelemetryEvent(BaseModel):
 		"transformer_temp_c",
 		"converter_temp_c",
 		"traction_motor_temp_c",
+		"engine_temperature_c",
+		"brakes_temperature_c",
 		"axle_bearing_temp_c",
 	)
 	@classmethod
@@ -78,13 +91,22 @@ class TelemetryEvent(BaseModel):
 			raise ValueError("temperature must be in range -60..220 C")
 		return value
 
-	@field_validator("catenary_voltage_kv")
+	@field_validator("catenary_voltage_kv", "voltage_kv")
 	@classmethod
 	def validate_voltage_range(cls, value: float | None) -> float | None:
 		if value is None:
 			return value
 		if not 0 <= value <= 35:
 			raise ValueError("catenary voltage must be in range 0..35 kV")
+		return value
+
+	@field_validator("traction_current_a", "current_a")
+	@classmethod
+	def validate_current_range(cls, value: float | None) -> float | None:
+		if value is None:
+			return value
+		if not 0 <= value <= 5000:
+			raise ValueError("current must be in range 0..5000 A")
 		return value
 
 	@model_validator(mode="after")
@@ -125,6 +147,7 @@ class ActiveWarningResponse(BaseModel):
 	message: str
 	recommended_action: str
 	status: Literal["active", "cleared", "expired"]
+	allowed_speed_kph_override: float | None = Field(default=None, ge=0)
 	created_by: str | None = None
 	metadata: dict | None = None
 	expires_at: datetime | None = None
@@ -150,6 +173,7 @@ class ManualWarningCreateRequest(BaseModel):
 	recommended_action: str = Field(..., min_length=1)
 	duration_seconds: int = Field(..., ge=1, le=86400)
 	source: Literal["dispatcher", "admin"]
+	allowed_speed_kph_override: float | None = Field(default=None, ge=0)
 	created_by: str | None = Field(default=None, max_length=128)
 	metadata: dict | None = None
 
@@ -166,6 +190,22 @@ class LocomotiveCurrentResponse(BaseModel):
 	locomotive_id: str
 	event: TelemetryEvent | None
 	active_warnings: list[ActiveWarningResponse] = Field(default_factory=list)
+
+
+class ReplayFrame(BaseModel):
+	timestamp: datetime
+	locomotive_id: str
+	snapshot: dict
+	active_warnings: list[ActiveWarningResponse] = Field(default_factory=list)
+
+
+class ReplayResponse(BaseModel):
+	locomotive_id: str
+	from_ts: datetime = Field(..., alias="from")
+	to_ts: datetime = Field(..., alias="to")
+	telemetry_frames: list[ReplayFrame] = Field(default_factory=list)
+	warnings: list[ActiveWarningResponse] = Field(default_factory=list)
+	summary: dict | None = None
 
 
 class SystemMetricsResponse(BaseModel):

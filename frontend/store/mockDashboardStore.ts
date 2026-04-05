@@ -1,11 +1,5 @@
 import { create } from "zustand";
-import type {
-  AlertLogEntry,
-  HealthCategory,
-  HealthIndex,
-  TelemetryPacket,
-  TrendPoint,
-} from "@/lib/types";
+import type { HealthCategory, HealthIndex, TelemetryPacket, TrendPoint } from "@/lib/types";
 import { clampToRange, emaSmooth } from "@/lib/utils";
 
 const MAX_HISTORY = 120;
@@ -82,7 +76,6 @@ type DashboardState = {
   >;
   health: HealthIndex;
   history: TrendPoint[];
-  alertLog: AlertLogEntry[];
   routeProgress: number;
   /** EMA state */
   _ema: { temp: number; pressure: number; voltage: number };
@@ -127,7 +120,6 @@ export const useMockDashboardStore = create<DashboardState>((set, get) => {
         voltage: first.voltage,
       },
     ],
-    alertLog: [],
     routeProgress: 0.35,
     _ema: {
       temp: first.temp_engine,
@@ -206,25 +198,6 @@ export const useMockDashboardStore = create<DashboardState>((set, get) => {
         },
       ];
 
-      let alertLog = s.alertLog;
-      if (alert_codes.length) {
-        const newEntries: AlertLogEntry[] = alert_codes.map((code, i) => ({
-          id: `${t}-${i}-${code}`,
-          code,
-          message:
-            code === "E012"
-              ? "Engine temperature excursion"
-              : code === "B044"
-                ? "Brake manifold pressure low"
-                : code === "V201"
-                  ? "Traction bus voltage drop"
-                  : "Operational envelope advisory",
-          time: timestamp,
-          severity: health.category,
-        }));
-        alertLog = [...newEntries, ...alertLog].slice(0, 80);
-      }
-
       const routeProgress =
         (s.routeProgress + (displayPacket.speed / 360000) * 50) % 1;
 
@@ -238,7 +211,6 @@ export const useMockDashboardStore = create<DashboardState>((set, get) => {
         _ema: { temp: eTemp, pressure: ePressure, voltage: eVoltage },
         health,
         history,
-        alertLog,
         receivedAt: isoNow(),
         routeProgress,
       });

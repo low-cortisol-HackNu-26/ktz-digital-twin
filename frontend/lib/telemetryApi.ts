@@ -23,8 +23,10 @@ export type TelemetryEventCurrent = {
   catenary_voltage_kv?: number;
   traction_current_a?: number;
   traction_power_kw?: number;
+  traction_type?:string;
   regen_power_kw?: number;
   transformer_temp_c?: number;
+  energy_consumption_kwh?:number;
   converter_temp_c?: number;
   traction_motor_temp_c?: number;
   axle_bearing_temp_c?: number;
@@ -64,6 +66,18 @@ export type LocomotiveCurrentResponse = {
   active_warnings: ActiveWarningCurrent[];
 };
 
+function normalizeCurrentPayload(raw: unknown): LocomotiveCurrentResponse | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const locomotive_id = typeof o.locomotive_id === "string" ? o.locomotive_id : "";
+  const active_warnings = Array.isArray(o.active_warnings) ? o.active_warnings : [];
+  return {
+    locomotive_id,
+    event: (o.event ?? null) as TelemetryEventCurrent | null,
+    active_warnings: active_warnings as ActiveWarningCurrent[],
+  };
+}
+
 export async function fetchLocomotiveCurrent(
   locomotiveId: string,
 ): Promise<LocomotiveCurrentResponse | null> {
@@ -74,7 +88,7 @@ export async function fetchLocomotiveCurrent(
       { cache: "no-store" },
     );
     if (!res.ok) return null;
-    return (await res.json()) as LocomotiveCurrentResponse;
+    return normalizeCurrentPayload(await res.json());
   } catch {
     return null;
   }
@@ -89,10 +103,19 @@ export async function fetchLocomotiveWarnings(locomotiveId: string): Promise<Act
       { cache: "no-store" },
     );
     if (!res.ok) return [];
-    return (await res.json()) as ActiveWarningCurrent[];
+    const raw = await res.json();
+    return Array.isArray(raw) ? (raw as ActiveWarningCurrent[]) : [];
   } catch {
     return [];
   }
+}
+
+/** Warnings shown on the Alerts tab: `current.active_warnings` (same rules as latest snapshot). */
+export async function fetchActiveWarningsViaCurrent(
+  locomotiveId: string,
+): Promise<ActiveWarningCurrent[]> {
+  const current = await fetchLocomotiveCurrent(locomotiveId);
+  return current?.active_warnings ?? [];
 }
 
 /** e.g. "ALA-NUR:002" → "ALA-NUR" */

@@ -12,10 +12,8 @@ import {
 } from "recharts";
 import { format } from "date-fns";
 import { useMockDashboardStore } from "@/store/mockDashboardStore";
-import { cn } from "@/lib/utils";
 
 function TrendAlertsView() {
-  const alertLog = useMockDashboardStore((s) => s.alertLog);
   const history = useMockDashboardStore((s) => s.history);
 
   const chartData = useMemo(() => {
@@ -34,8 +32,10 @@ function TrendAlertsView() {
         <div className="mb-4 shrink-0">
           <h2 className="text-sm font-medium text-slate-400">Alert correlation</h2>
           <p className="mt-1 text-xs text-slate-500">
-            Bars mark seconds where mock thresholds would raise codes (E012 / B044 /
-            V201). Feed will come from FastAPI + Celery later.
+            Bars mark seconds where mock thresholds would breach (E012 / B044 / V201).
+            Active warnings use{" "}
+            <code className="text-slate-400">GET /api/locomotives/{"{id}"}/warnings</code> on
+            the Alerts tab.
           </p>
         </div>
         <div className="min-h-0 flex-1">
@@ -85,52 +85,6 @@ function TrendAlertsView() {
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </section>
-
-      <section className="panel">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-medium text-slate-400">Alert stream</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Newest first — populated when the simulator injects fault codes.
-            </p>
-          </div>
-          <span className="readout-sm text-slate-500">{alertLog.length} events</span>
-        </div>
-        <ul className="mt-4 max-h-[420px] space-y-2 overflow-auto pr-1">
-          {alertLog.length === 0 ? (
-            <li className="rounded-lg border border-dashed border-cabin-border bg-cabin-bg/40 px-4 py-8 text-center text-sm text-slate-500">
-              No alerts yet. Wait for a temperature spike or brake dip in the mock feed.
-            </li>
-          ) : (
-            alertLog.map((a) => (
-              <li
-                key={a.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-cabin-border bg-cabin-bg/50 px-4 py-3"
-              >
-                <div>
-                  <p className="font-mono text-sm font-semibold text-sky-300">{a.code}</p>
-                  <p className="text-sm text-slate-300">{a.message}</p>
-                </div>
-                <div className="text-right">
-                  <span
-                    className={cn(
-                      "inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-                      a.severity === "Критично" && "bg-rose-500/15 text-rose-200",
-                      a.severity === "Внимание" && "bg-amber-500/15 text-amber-200",
-                      a.severity === "Норма" && "bg-emerald-500/15 text-emerald-200",
-                    )}
-                  >
-                    {a.severity}
-                  </span>
-                  <p className="readout-sm mt-1 text-slate-500">
-                    {format(new Date(a.time), "HH:mm:ss")}
-                  </p>
-                </div>
-              </li>
-            ))
-          )}
-        </ul>
       </section>
     </div>
   );

@@ -5,10 +5,7 @@ import { differenceInMinutes, formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
 import { AlertTriangle, Flame, Info, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  type ActiveWarningCurrent,
-  fetchLocomotiveWarnings,
-} from "@/lib/telemetryApi";
+import { type ActiveWarningCurrent, fetchActiveWarningsViaCurrent } from "@/lib/telemetryApi";
 
 type VisualTier = "critical" | "high" | "medium" | "info";
 
@@ -56,8 +53,8 @@ export function LocomotiveWarningsView({ locomotiveId }: { locomotiveId: string 
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const list = await fetchLocomotiveWarnings(locomotiveId);
-    setWarnings(list);
+    const list = await fetchActiveWarningsViaCurrent(locomotiveId);
+    setWarnings(Array.isArray(list) ? list : []);
     setLoading(false);
   }, [locomotiveId]);
 
