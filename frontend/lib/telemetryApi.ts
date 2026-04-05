@@ -23,10 +23,12 @@ export type TelemetryEventCurrent = {
   catenary_voltage_kv?: number;
   traction_current_a?: number;
   traction_power_kw?: number;
-  traction_type?:string;
+  traction_type?: string;
+  fuel_level_percent?: number;
+  fuel_consumption_lph?: number;
   regen_power_kw?: number;
   transformer_temp_c?: number;
-  energy_consumption_kwh?:number;
+  energy_consumption_kwh?: number;
   converter_temp_c?: number;
   traction_motor_temp_c?: number;
   axle_bearing_temp_c?: number;
@@ -60,10 +62,22 @@ export type ActiveWarningCurrent = {
   last_seen_at: string;
 };
 
+export type HealthIndexCurrent = {
+  overall_health_index: number;
+  electricity_health: number;
+  brake_health: number;
+  pressure_health: number;
+  voltage_health: number;
+  current_health: number;
+  top_factors: string[];
+  timestamp?: string | null;
+};
+
 export type LocomotiveCurrentResponse = {
   locomotive_id: string;
   event: TelemetryEventCurrent | null;
   active_warnings: ActiveWarningCurrent[];
+  health_index?: HealthIndexCurrent | null;
 };
 
 function normalizeCurrentPayload(raw: unknown): LocomotiveCurrentResponse | null {
@@ -75,6 +89,7 @@ function normalizeCurrentPayload(raw: unknown): LocomotiveCurrentResponse | null
     locomotive_id,
     event: (o.event ?? null) as TelemetryEventCurrent | null,
     active_warnings: active_warnings as ActiveWarningCurrent[],
+    health_index: (o.health_index ?? null) as HealthIndexCurrent | null,
   };
 }
 

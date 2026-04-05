@@ -189,10 +189,22 @@ class ManualWarningCreateResponse(BaseModel):
 	expires_at: datetime
 
 
+class HealthIndexResponse(BaseModel):
+	overall_health_index: float = Field(..., ge=0, le=100)
+	electricity_health: float = Field(..., ge=0, le=100)
+	brake_health: float = Field(..., ge=0, le=100)
+	pressure_health: float = Field(..., ge=0, le=100)
+	voltage_health: float = Field(..., ge=0, le=100)
+	current_health: float = Field(..., ge=0, le=100)
+	top_factors: list[str] = Field(default_factory=list)
+	timestamp: datetime | None = None
+
+
 class LocomotiveCurrentResponse(BaseModel):
 	locomotive_id: str
 	event: TelemetryEvent | None
 	active_warnings: list[ActiveWarningResponse] = Field(default_factory=list)
+	health_index: HealthIndexResponse | None = None
 
 
 class ReplayFrame(BaseModel):
