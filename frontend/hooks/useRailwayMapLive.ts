@@ -5,6 +5,7 @@ import {
   fetchMapRoutes,
   pickRoutePolyline,
   pickRoutePolylineByCode,
+  routeDisplayNameFromCollection,
   type RouteCollection,
 } from "@/lib/mapApi";
 import {
@@ -20,6 +21,8 @@ export type RailwayMapLive = {
   marker: [number, number] | null;
   speedKph: number | null;
   lastTelemetry: LocomotiveCurrentResponse | null;
+  /** Route `properties.name` from map API when code matches telemetry segment. */
+  routeDisplayName: string | null;
 };
 
 export function useRailwayMapLive(locomotiveId: string): RailwayMapLive {
@@ -29,6 +32,7 @@ export function useRailwayMapLive(locomotiveId: string): RailwayMapLive {
     marker: null,
     speedKph: null,
     lastTelemetry: null,
+    routeDisplayName: null,
   });
 
   useEffect(() => {
@@ -60,6 +64,7 @@ export function useRailwayMapLive(locomotiveId: string): RailwayMapLive {
           marker: null,
           speedKph: null,
           lastTelemetry: current,
+          routeDisplayName: null,
         });
         return;
       }
@@ -82,6 +87,7 @@ export function useRailwayMapLive(locomotiveId: string): RailwayMapLive {
         marker,
         speedKph: typeof ev.speed_kph === "number" ? ev.speed_kph : null,
         lastTelemetry: current,
+        routeDisplayName: routeDisplayNameFromCollection(routes, code),
       });
     }
 

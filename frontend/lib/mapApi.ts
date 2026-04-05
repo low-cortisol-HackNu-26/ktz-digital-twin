@@ -109,3 +109,16 @@ export function pickRoutePolylineByCode(
   }
   return pickRoutePolyline(routes, null);
 }
+
+/** Human route title from GET /api/map/routes (matches telemetry `route_segment` code). */
+export function routeDisplayNameFromCollection(
+  routes: RouteCollection | null,
+  routeCode: string | null,
+): string | null {
+  if (!routes?.features?.length || !routeCode) return null;
+  const f = routes.features.find(
+    (x) => x.properties.code?.toUpperCase() === routeCode.toUpperCase(),
+  );
+  const name = f?.properties?.name?.trim();
+  return name || null;
+}

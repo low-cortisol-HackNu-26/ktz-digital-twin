@@ -40,6 +40,11 @@ export type TelemetryEventCurrent = {
   gps_lat: number | null;
   gps_lon: number | null;
   route_segment: string | null;
+  /** Derived on backend from route geometry + speed (see GET …/current). */
+  route_progress_percent?: number | null;
+  distance_to_destination_km?: number | null;
+  eta_seconds?: number | null;
+  eta_timestamp?: string | null;
   gradient_permille?: number;
   train_mass_tons?: number;
   active_fault_codes?: string[];
