@@ -197,7 +197,7 @@ function HealthCheckView() {
               {allowedDisplay}
             </p>
           </div>
-          <div className="absolute mx-auto aspect-square w-[376px] mt-[44px]">
+          <div className="absolute mx-auto aspect-square w-[376px] mt-[96px]">
             <ResponsiveContainer width="100%" height="100%">
               <RadialBarChart
                 data={speedGauge}

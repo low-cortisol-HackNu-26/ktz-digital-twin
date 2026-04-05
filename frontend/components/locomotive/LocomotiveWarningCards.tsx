@@ -19,11 +19,19 @@ function visualTier(w: ActiveWarningCurrent): VisualTier {
 function categoryLabel(ruleId: string): string {
   const map: Record<string, string> = {
     high_temperature: "Двигатель",
+    high_vibration: "Двигатель",
+    high_brakes_temperature: "Тормоза",
     overspeed: "Скорость",
     upcoming_bad_track: "Путь",
+    track_condition_alert: "Путь",
     low_signal_quality: "Навигация",
     voltage_sag: "Контактная сеть",
-    high_vibration: "Двигатель",
+    high_current: "Электрика",
+    low_pressure: "Тормоза",
+    low_pneumatic_pressure: "Пневмосистема",
+    high_energy_consumption: "Энергия",
+    low_fuel: "Топливо",
+    weather_condition_alert: "Погода",
   };
   return map[ruleId] ?? "Система";
 }
