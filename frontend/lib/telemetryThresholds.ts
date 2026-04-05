@@ -4,8 +4,8 @@
  */
 
 /** Electric: |energy_consumption_kwh| — high is worse (see electricitySeverity). */
-export const ENERGY_ABS_WARN = 30;
-export const ENERGY_ABS_CRIT = 50;
+export const ENERGY_ABS_WARN = 7;
+export const ENERGY_ABS_CRIT = 9;
 
 /** Diesel/fuel: fuel_level_percent — low is worse (see fuelSeverity). */
 export const FUEL_PCT_CRIT_BELOW = 40;
@@ -28,8 +28,8 @@ export const VOLTAGE_WARN_KV = 20;
 export const VOLTAGE_CRIT_KV = 17;
 
 /** Traction current A — high is worse. */
-export const CURRENT_WARN_A = 600;
-export const CURRENT_CRIT_A = 900;
+export const CURRENT_WARN_A = 150;
+export const CURRENT_CRIT_A = 300;
 
 /** Recharts ReferenceLine entries: amber = warning edge, red = critical edge. */
 export type TrendThresholdLine = { y: number; stroke: string; strokeDasharray?: string };

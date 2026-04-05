@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import {
+  fetchActiveWarningsViaCurrent,
   fetchLocomotiveCurrent,
   fetchLocomotiveHistory,
+  type ActiveWarningCurrent,
   type TelemetryHistoryRow,
 } from "@/lib/telemetryApi";
+import { LocomotiveWarningCardItem } from "@/components/locomotive/LocomotiveWarningCards";
 import {
   TREND_WINDOW_MIN,
   brakesTempFromRow,
@@ -39,8 +42,12 @@ import {
 import { TrendChartCard } from "@/components/trends/TrendChartCard";
 
 const POLL_MS = 4000;
+/** How long a new-alert toast stays fixed on top of the Trends view. */
+const TREND_NEW_ALERT_MS = 5000;
 /** Backend cap; need enough rows to cover TREND_WINDOW_MIN at high ingest rate (~10 Hz → 9k points / 15 min). */
 const HISTORY_LIMIT = 10_000;
+
+type TrendToastEntry = { key: string; warning: ActiveWarningCurrent };
 
 function formatTrendValue(v: number | null, digits: number): string {
   if (v == null || Number.isNaN(v)) return "—";
@@ -55,6 +62,36 @@ export function TrendsView() {
   const [windowEndMs, setWindowEndMs] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [newAlertToasts, setNewAlertToasts] = useState<TrendToastEntry[]>([]);
+
+  const knownWarningIdsRef = useRef<Set<string>>(new Set());
+  const warningsSeededRef = useRef(false);
+  const toastTimeoutsRef = useRef<ReturnType<typeof globalThis.setTimeout>[]>([]);
+
+  const pushNewAlertToast = useCallback((w: ActiveWarningCurrent) => {
+    const key = `${w.warning_id}-${Date.now()}`;
+    setNewAlertToasts((prev) => [...prev, { key, warning: w }]);
+    const tid = globalThis.setTimeout(() => {
+      setNewAlertToasts((prev) => prev.filter((t) => t.key !== key));
+      toastTimeoutsRef.current = toastTimeoutsRef.current.filter((x) => x !== tid);
+    }, TREND_NEW_ALERT_MS);
+    toastTimeoutsRef.current.push(tid);
+  }, []);
+
+  useEffect(() => {
+    knownWarningIdsRef.current = new Set();
+    warningsSeededRef.current = false;
+    setNewAlertToasts([]);
+    toastTimeoutsRef.current.forEach(clearTimeout);
+    toastTimeoutsRef.current = [];
+  }, [locomotiveId]);
+
+  useEffect(
+    () => () => {
+      toastTimeoutsRef.current.forEach(clearTimeout);
+    },
+    [],
+  );
 
   const tick = useCallback(async () => {
     if (!locomotiveId) {
@@ -65,16 +102,31 @@ export function TrendsView() {
     const now = new Date();
     setWindowEndMs(now.getTime());
     const from = new Date(now.getTime() - TREND_WINDOW_MIN * 60_000);
-    const [rows, current] = await Promise.all([
+    const [rows, current, activeWarnings] = await Promise.all([
       fetchLocomotiveHistory(locomotiveId, from.toISOString(), now.toISOString(), HISTORY_LIMIT),
       fetchLocomotiveCurrent(locomotiveId),
+      fetchActiveWarningsViaCurrent(locomotiveId),
     ]);
     setHistory(rows);
+
+    const list = Array.isArray(activeWarnings) ? activeWarnings : [];
+    const ids = new Set(list.map((w) => w.warning_id));
+    if (!warningsSeededRef.current) {
+      knownWarningIdsRef.current = ids;
+      warningsSeededRef.current = true;
+    } else {
+      const prev = knownWarningIdsRef.current;
+      for (const w of list) {
+        if (!prev.has(w.warning_id)) pushNewAlertToast(w);
+      }
+      knownWarningIdsRef.current = ids;
+    }
+
     const tt = current?.event?.traction_type;
     if (tt) setTractionType(tt);
     setLoading(false);
     setError(rows.length === 0 && current?.event == null);
-  }, [locomotiveId]);
+  }, [locomotiveId, pushNewAlertToast]);
 
   useEffect(() => {
     void tick();
@@ -187,8 +239,21 @@ export function TrendsView() {
   }, [series, electric]);
 
   return (
-    <div className="rounded-2xl p-4 sm:p-5">
-
+    <div className="relative rounded-2xl p-4 sm:p-5 mt-[-20px]">
+      <div  
+        className="pointer-events-none fixed left-0 right-0 top-4 z-[90] flex flex-col items-center gap-3 px-3 sm:top-6"
+        aria-live="assertive"
+        aria-relevant="additions"
+      >
+        {newAlertToasts.map(({ key, warning }) => (
+          <div
+            key={key}
+            className="pointer-events-auto w-full max-w-lg origin-top animate-trend-toast-in shadow-2xl"
+          >
+            <LocomotiveWarningCardItem warning={warning} compact />
+          </div>
+        ))}
+      </div>
 
       {error && !loading ? (
         <p className="mb-4 rounded-lg border border-amber-900/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100/90">
@@ -196,7 +261,7 @@ export function TrendsView() {
         </p>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-4 mt-[-20px]">
+      <div className="grid grid-cols-2 gap-4">
         {cards.map((c) => (
           <TrendChartCard
             key={c.key}
