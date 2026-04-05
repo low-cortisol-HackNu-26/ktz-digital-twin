@@ -26,7 +26,9 @@ export type TelemetryEventCurrent = {
   traction_type?:string;
   regen_power_kw?: number;
   transformer_temp_c?: number;
+  brakes_temperature_c?:number;
   energy_consumption_kwh?:number;
+  fuel_level_percent?:number;
   converter_temp_c?: number;
   traction_motor_temp_c?: number;
   axle_bearing_temp_c?: number;
@@ -116,6 +118,44 @@ export async function fetchActiveWarningsViaCurrent(
 ): Promise<ActiveWarningCurrent[]> {
   const current = await fetchLocomotiveCurrent(locomotiveId);
   return current?.active_warnings ?? [];
+}
+
+/** One row from GET /api/locomotives/{id}/history (TelemetryEvent JSON). */
+export type TelemetryHistoryRow = TelemetryEventCurrent & {
+  traction_type?: "electric" | "diesel" | "fuel";
+  fuel_level_percent?: number | null;
+  energy_consumption_kwh?: number | null;
+  brakes_temperature_c?: number | null;
+  engine_temperature_c?: number | null;
+  voltage_kv?: number | null;
+  current_a?: number | null;
+  pressure_bar?: number | null;
+};
+
+/** Time-series events between `from` and `to` (ISO-8601), newest-first from DB, returned chronological. */
+export async function fetchLocomotiveHistory(
+  locomotiveId: string,
+  fromIso: string,
+  toIso: string,
+  limit = 2000,
+): Promise<TelemetryHistoryRow[]> {
+  if (!locomotiveId) return [];
+  try {
+    const params = new URLSearchParams({
+      from: fromIso,
+      to: toIso,
+      limit: String(limit),
+    });
+    const res = await fetch(
+      `${getApiBase()}/api/locomotives/${encodeURIComponent(locomotiveId)}/history?${params}`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return [];
+    const raw = await res.json();
+    return Array.isArray(raw) ? (raw as TelemetryHistoryRow[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 /** e.g. "ALA-NUR:002" → "ALA-NUR" */

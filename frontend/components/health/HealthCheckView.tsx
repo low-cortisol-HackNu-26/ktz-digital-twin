@@ -12,6 +12,22 @@ import {
   resolveHealthLocomotiveId,
 } from "@/hooks/useLocomotiveTelemetryHealth";
 import type { TelemetryEventCurrent } from "@/lib/telemetryApi";
+import {
+  BRAKES_TEMP_CRIT_C,
+  BRAKES_TEMP_WARN_C,
+  CURRENT_CRIT_A,
+  CURRENT_WARN_A,
+  DRIVE_TEMP_CRIT_C,
+  DRIVE_TEMP_WARN_C,
+  ENERGY_ABS_CRIT,
+  ENERGY_ABS_WARN,
+  FUEL_PCT_CRIT_BELOW,
+  FUEL_PCT_WARN_BELOW,
+  PNEUMATIC_CRIT_BAR,
+  PNEUMATIC_WARN_BAR,
+  VOLTAGE_CRIT_KV,
+  VOLTAGE_WARN_KV,
+} from "@/lib/telemetryThresholds";
 import { cn } from "@/lib/utils";
 import {
   AlertCircle,
@@ -210,19 +226,6 @@ function HealthCheckView() {
       <section className="rounded-xl border border-cyan-950/50 bg-slate-100/40 p-5 shadow-inner">
         <TelemetryMetricsGrid event={event} overspeed={overspeed} />
       </section>
-      <section className="panel">
-        <h2 className="text-sm font-medium text-primary">
-          Телеметрия (wire)
-        </h2>
-        <p className="mt-1 text-xs text-slate-500">
-          JSON из{" "}
-          <code className="text-primary">GET /api/locomotives/{locomotiveId}/current</code>
-          — событие симулятора и активные предупреждения.
-        </p>
-        <pre className=" mt-4 max-h-64 overflow-auto rounded-lg bg-white p-4 text-primary">
-          {JSON.stringify(wirePayload, null, 2)}
-        </pre>
-      </section>
     </div>
   );
 }
@@ -255,29 +258,29 @@ function maxDriveTempC(e: TelemetryEventCurrent): number | null {
 
 function driveTempSeverity(temp: number | null): PanelSeverity {
   if (temp == null) return "normal";
-  if (temp >= 110) return "critical";
-  if (temp >= 95) return "warning";
+  if (temp >= DRIVE_TEMP_CRIT_C) return "critical";
+  if (temp >= DRIVE_TEMP_WARN_C) return "warning";
   return "normal";
 }
 
-function brakePipeSeverity(bar: number | undefined): PanelSeverity {
-  if (bar == null || Number.isNaN(bar)) return "normal";
-  if (bar < 3.0) return "critical";
-  if (bar < 4.2) return "warning";
+function brakePipeSeverity(temp: number | undefined): PanelSeverity {
+  if (temp == undefined) return "normal";
+  if (temp >= BRAKES_TEMP_CRIT_C) return "critical";
+  if (temp >= BRAKES_TEMP_WARN_C) return "warning";
   return "normal";
 }
 
 function pneumaticSeverity(bar: number | undefined): PanelSeverity {
   if (bar == null || Number.isNaN(bar)) return "normal";
-  if (bar < 5.0) return "critical";
-  if (bar < 6.0) return "warning";
+  if (bar < PNEUMATIC_CRIT_BAR) return "critical";
+  if (bar < PNEUMATIC_WARN_BAR) return "warning";
   return "normal";
 }
 
 function voltageSeverity(kv: number | undefined): PanelSeverity {
   if (kv == null || Number.isNaN(kv)) return "normal";
-  if (kv < 17) return "critical";
-  if (kv < 20) return "warning";
+  if (kv < VOLTAGE_CRIT_KV) return "critical";
+  if (kv < VOLTAGE_WARN_KV) return "warning";
   return "normal";
 }
 
@@ -286,8 +289,8 @@ function electricitySeverity(
 ): PanelSeverity {
   if (e == null || Number.isNaN(e)) return "normal";
   const a = Math.abs(e);
-  if (a >= 50) return "critical";
-  if (a >= 30) return "warning";
+  if (a >= ENERGY_ABS_CRIT) return "critical";
+  if (a >= ENERGY_ABS_WARN) return "warning";
   return "normal";
 }
 
@@ -296,16 +299,16 @@ function fuelSeverity(
 ): PanelSeverity {
   if (e == null || Number.isNaN(e)) return "critical";
   const a = Math.abs(e);
-  if (a >= 70) return "normal";
-  if (a >= 40) return "warning";
+  if (a >= FUEL_PCT_WARN_BELOW) return "normal";
+  if (a >= FUEL_PCT_CRIT_BELOW) return "warning";
   return "critical";
 }
 
 function currentSeverity(amps: number | undefined): PanelSeverity {
   if (amps == null || Number.isNaN(amps)) return "normal";
   const a = Math.abs(amps);
-  if (a >= 900) return "critical";
-  if (a >= 600) return "warning";
+  if (a >= CURRENT_CRIT_A) return "critical";
+  if (a >= CURRENT_WARN_A) return "warning";
   return "normal";
 }
 
@@ -348,10 +351,10 @@ function TelemetryMetricsGrid({
       Icon: Cog,
     },
     {
-      label: "ТОРМОЗ",
-      value: formatTelemetryNum(event.brake_pipe_pressure_bar, 1),
-      unit: "bar",
-      severity: brakePipeSeverity(event.brake_pipe_pressure_bar),
+      label: "ТОРМОЗ °C",
+      value: formatTelemetryNum(event.brakes_temperature_c, 1),
+      unit: "°C",
+      severity: brakePipeSeverity(event.brakes_temperature_c),
       Icon: AlertCircle,
     },
     {

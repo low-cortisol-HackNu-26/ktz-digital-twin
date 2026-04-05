@@ -91,7 +91,7 @@ export function LocomotiveWarningsView({ locomotiveId }: { locomotiveId: string 
         return (
           <li key={w.warning_id}>
             {tier === "critical" ? (
-              <div className="overflow-hidden rounded-xl border border-red-500 border-2 shadow-lg shadow-black/20">
+              <div className="overflow-hidden rounded-xl border border-red-500 border-2 shadow-lg shadow-black/20  bg-white">
                 <div className="flex items-center justify-between bg-red-500 px-4 py-2 text-lg font-normal  tracking-wide text-white">
                   <span className="uppercase">КРИТИЧНО</span>
                   <span>Активно: {activeM} мин</span>
@@ -119,7 +119,7 @@ export function LocomotiveWarningsView({ locomotiveId }: { locomotiveId: string 
             ) : (
               <div
   className={cn(
-    "overflow-hidden rounded-xl border-2 shadow-lg shadow-black/20",
+    "overflow-hidden rounded-xl border-2 shadow-lg shadow-black/20 bg-white",
     tier === "high" && "border-red-500",
     tier === "medium" && "border-amber-500",
     tier === "info" && "border-sky-500",
